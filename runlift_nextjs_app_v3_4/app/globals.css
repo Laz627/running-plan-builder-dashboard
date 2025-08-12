@@ -89,7 +89,8 @@ body {
 /* Horizontal scroll area for cards/tables on mobile */
 .scroll-x {
   overflow-x: auto;
-  overscroll-behavior: contain;   /* don't bubble to page */
+  overscroll-behavior: contain;      /* don't bubble to page */
   -webkit-overflow-scrolling: touch; /* iOS momentum */
-  touch-action: pan-x;            /* capture horizontal swipes */
+  touch-action: pan-x;               /* capture horizontal swipes */
 }
+
