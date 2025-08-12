@@ -20,10 +20,6 @@ export const PENALTY_SEC = 10;   // when RPE > 7 (stacking slowdown)
 export const RECOVERY_SEC = 5;   // when RPE ≤ 7 (slower/firmer recovery)
 export const MAX_ADJ_SEC = 120;  // cap total adjustment at +2:00/mi
 
-/**
- * Compute the new adjustment (in seconds) relative to the *baseline* pace.
- * Positive = slower than baseline; 0 = fully recovered to baseline.
- */
 export function nextAdjustmentSeconds(currentAdjSec: number, rpe: number): number {
   let next = currentAdjSec;
   if (rpe > 7) {
@@ -39,9 +35,6 @@ export function nextAdjustmentSeconds(currentAdjSec: number, rpe: number): numbe
   return next;
 }
 
-/**
- * Given a baseline pace and the new adjustment, return the adjusted "mm:ss".
- */
 export function adjustedPaceFromBaseline(baselineMMSS: string, adjSec: number): string {
   const base = mmssToSec(baselineMMSS);
   if (!Number.isFinite(base)) return baselineMMSS;
