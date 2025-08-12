@@ -1,8 +1,6 @@
-import { motion } from 'framer-motion';
-
 'use client';
 import Fade from '@/components/Fade';
-
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import Card from '@/components/Card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -56,6 +54,7 @@ export default function ChartsPage(){
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </Card>
+    </Fade>  
+  </Card>
   );
 }
