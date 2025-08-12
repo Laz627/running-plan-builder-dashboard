@@ -7,8 +7,7 @@ type ModalProps = {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
-  /** max width on desktop/tablet (Tailwind class) */
-  maxWidthClass?: string; // e.g. 'max-w-xl' | 'max-w-2xl'
+  maxWidthClass?: string; // 'max-w-xl' | 'max-w-2xl'
 };
 
 export default function Modal({
@@ -20,37 +19,31 @@ export default function Modal({
 }: ModalProps) {
   const scrollYRef = useRef<number>(0);
 
-  // Lock body scroll when open (no background scroll; works on mobile)
+  // Lock page scroll when modal is open; restore on close
   useEffect(() => {
     if (!open) return;
 
-    // Save scroll position and lock the body in place
-    scrollYRef.current = window.scrollY || window.pageYOffset || 0;
+    scrollYRef.current = window.scrollY || 0;
     const body = document.body;
+    const html = document.documentElement;
+
     body.style.position = 'fixed';
     body.style.top = `-${scrollYRef.current}px`;
     body.style.left = '0';
     body.style.right = '0';
     body.style.width = '100%';
-    body.style.overflow = 'hidden'; // hard lock, no horizontal either
-
-    // Prevent pinch-bounce scroll chaining from modal to page on mobile
-    const html = document.documentElement;
+    body.style.overflow = 'hidden'; // block horizontal/vertical
     html.style.overscrollBehavior = 'none';
 
     return () => {
-      // Restore scroll + styles
-      const y = scrollYRef.current;
-      const body2 = document.body;
-      const html2 = document.documentElement;
-      body2.style.position = '';
-      body2.style.top = '';
-      body2.style.left = '';
-      body2.style.right = '';
-      body2.style.width = '';
-      body2.style.overflow = '';
-      html2.style.overscrollBehavior = '';
-      window.scrollTo(0, y);
+      body.style.position = '';
+      body.style.top = '';
+      body.style.left = '';
+      body.style.right = '';
+      body.style.width = '';
+      body.style.overflow = '';
+      html.style.overscrollBehavior = '';
+      window.scrollTo(0, scrollYRef.current);
     };
   }, [open]);
 
@@ -62,14 +55,14 @@ export default function Modal({
       role="dialog"
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
     >
-      {/* Backdrop */}
+      {/* backdrop */}
       <button
         aria-label="Close modal"
         className="absolute inset-0 bg-black/50"
         onClick={onClose}
       />
 
-      {/* Panel (mobile = bottom sheet, desktop = centered card) */}
+      {/* panel */}
       <div
         className={`
           relative w-full sm:${maxWidthClass}
@@ -81,7 +74,6 @@ export default function Modal({
           overflow-hidden
         `}
       >
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg sm:text-xl font-semibold">{title}</h2>
           <button
@@ -92,10 +84,10 @@ export default function Modal({
           </button>
         </div>
 
-        {/* Scrollable content ONLY inside the modal */}
+        {/* Only this region scrolls; prevent horizontal overflow */}
         <div
-          className="space-y-4 overflow-y-auto overscroll-contain"
-          style={{ maxHeight: 'calc(92vh - 64px)' }} /* mobile header height fudge */
+          className="space-y-4 overflow-y-auto overscroll-contain overflow-x-hidden min-w-0"
+          style={{ maxHeight: 'calc(92vh - 64px)' }}
         >
           {children}
         </div>
