@@ -7,13 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// SETTINGS table -> maps to existing "settings" with id/key/value
 model Setting {
-  key   String @id @db.Text
+  id    Int    @id @default(autoincrement())
+  key   String @unique @db.Text
   value String @db.Text
 
   @@map("settings")
 }
 
+// RUN LOGS -> creates/uses table "run_logs"
 model RunLog {
   id              Int      @id @default(autoincrement())
   logDate         DateTime
@@ -30,6 +33,7 @@ model RunLog {
   @@map("run_logs")
 }
 
+// LIFT LOGS -> creates/uses table "lift_logs"
 model LiftLog {
   id        Int      @id @default(autoincrement())
   logDate   DateTime
