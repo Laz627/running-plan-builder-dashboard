@@ -85,3 +85,11 @@ body {
   -webkit-overflow-scrolling: touch;/* iOS momentum */
   min-width: 0;                     /* avoid flex/grid children forcing width */
 }
+
+/* Horizontal scroll area for cards/tables on mobile */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior: contain;   /* don't bubble to page */
+  -webkit-overflow-scrolling: touch; /* iOS momentum */
+  touch-action: pan-x;            /* capture horizontal swipes */
+}
