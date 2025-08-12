@@ -1,11 +1,9 @@
 'use client';
-import Fade from '@/components/Fade';
-import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
-import Card from '@/components/Card';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+import Fade from '@/components/Fade';
+import Card from '@/components/Card';
+import { useEffect, useState } from 'react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
 function defaultPlan(){ return [
   ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 8–10 mi (Easy)','Rest'],
@@ -35,26 +33,31 @@ function miles(desc: string){
 
 export default function ChartsPage(){
   const [plan, setPlan] = useState<string[][]>(defaultPlan());
-  useEffect(()=>{ fetch('/api/settings').then(r=>r.json()).then(s=>{
-    if (s.custom_plan_json) try { setPlan(JSON.parse(s.custom_plan_json)); } catch {}
-  }); }, []);
+
+  useEffect(()=>{ 
+    fetch('/api/settings').then(r=>r.json()).then(s=>{
+      if (s.custom_plan_json) try { setPlan(JSON.parse(s.custom_plan_json)); } catch {}
+    });
+  }, []);
+
   const weekly = plan.map(week => week.reduce((acc, d)=> acc + (d.includes('Rest')?0:miles(d)), 0));
   const data = weekly.map((m,i)=>({week: i+1, mileage: m}));
+
   return (
     <Fade>
       <Card title="Planned Weekly Mileage">
-      <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="week" />
-            <YAxis />
-            <Tooltip />
-            <Line type="monotone" dataKey="mileage" stroke="var(--chart-stroke)" strokeWidth={2} dot={false}/>
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </Fade>  
-  </Card>
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="week" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="mileage" stroke="var(--chart-stroke)" strokeWidth={2} dot={false}/>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </Fade>
   );
 }
