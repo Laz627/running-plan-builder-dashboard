@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 
 import { useEffect, useMemo, useState } from 'react';
 import Card from '@/components/Card';
+import Fade from '@/components/Fade';
 
 type Ex = { name:string; start:number; region:'upper'|'lower'; assist?:boolean };
 
