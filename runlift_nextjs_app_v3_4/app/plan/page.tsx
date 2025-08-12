@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import Card from '@/components/Card';
 import { toast } from '@/components/Toaster';
+import Fade from '@/components/Fade';
 
 const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
