@@ -1,100 +1,111 @@
-// app/api/stats/running/route.ts
+// app/api/stats/lifting/route.ts
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-function defaultPlan(): string[][] {
-  return [
-    ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 8–10 mi (Easy)','Rest'],
-    ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 8–10 mi (Easy)','Rest'],
-    ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 9–11 mi (Easy)','Rest'],
-    ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 10 mi (Easy)','Rest'],
-    ['ER 5 mi (Easy)','TR 7 mi (Tempo)','MR 8 mi (Last 2 @ MP)','SR 6 mi (6×800m)','ER 5 mi (Easy)','LR 12 mi (Last 3 @ MP)','Rest'],
-    ['ER 5 mi (Easy)','TR 7 mi (Tempo)','MR 8 mi (Last 2 @ MP)','SR 6 mi (6×800m)','ER 5 mi (Easy)','LR 13 mi (Last 3 @ MP)','Rest'],
-    ['ER 5 mi (Easy)','TR 7 mi (Tempo)','MR 8 mi (Last 2 @ MP)','SR 6 mi (6×800m)','ER 5 mi (Easy)','LR 14 mi (Last 3 @ MP)','Rest'],
-    ['ER 5 mi (Easy)','TR 7 mi (Tempo)','MR 8 mi (Last 2 @ MP)','SR 6 mi (6×800m)','ER 5 mi (Easy)','LR 15 mi (Last 3 @ MP)','Rest'],
-    ['ER 5 mi (Easy)','TR 8 mi (Tempo)','MR 9 mi (Last 3 @ MP)','SR 6 mi (10×400m)','ER 5 mi (Easy)','LR 18 mi (Last 4 @ MP)','Rest'],
-    ['ER 5 mi (Easy)','TR 8 mi (Tempo)','MR 9 mi (Last 3 @ MP)','SR 6 mi (10×400m)','ER 5 mi (Easy)','LR 20 mi (Last 4 @ MP)','Rest'],
-    ['ER 4 mi (Easy)','TR 5 mi (Tempo)','MR 6 mi (Easy)','SR 4 mi (6×400m)','ER 4 mi (Easy)','LR 10–12 mi (Easy)','Rest'],
-    ['ER 4 mi (Easy)','TR 5 mi (Tempo)','MR 6 mi (Easy)','SR 4 mi (6×400m)','ER 4 mi (Easy)','LR 6 mi (Easy)','Rest'],
-  ];
+type Ex = { name: string; key: string; start: number; region: 'upper'|'lower'; assisted?: boolean };
+
+function num(v: any, f: number) { const n = Number(v); return Number.isFinite(n) ? n : f; }
+
+function buildWeeks(exs: Ex[], incUpper:number, incLower:number, incAssist:number) {
+  const weeks = Array.from({length:12}, (_,i)=>i+1);
+  const rows = exs.map(ex => {
+    const w:number[] = [];
+    let cur = ex.start;
+    weeks.forEach(()=>{
+      w.push(cur);
+      if (ex.assisted) cur = Math.max(0, cur - incAssist);
+      else cur = cur + (ex.region === 'lower' ? incLower : incUpper);
+    });
+    return { name: ex.name, weights: w };
+  });
+  return { weeks, rows };
 }
 
-function miles(desc: string) {
-  const nums = desc.replace('–','-').match(/\d+/g);
-  if (!nums) return 0;
-  if (desc.includes('–') || desc.includes('-')) {
-    const parts = desc.split(/–|-/);
-    const vals = parts.map(p => parseFloat(p.match(/\d+/)?.[0] || '0')).filter(Boolean);
-    if (vals.length >= 2) return (vals[0] + vals[1]) / 2;
-  }
-  return parseFloat(nums[0]);
-}
-
-function weekIndex(d: Date, start: Date) {
-  const ms = d.getTime() - start.getTime();
-  const days = Math.floor(ms / (1000*60*60*24));
-  return Math.floor(days / 7) + 1; // week 1-based
-}
-
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const url = new URL(req.url);
-    const from = url.searchParams.get('from') ? new Date(url.searchParams.get('from')!) : null;
-    const to = url.searchParams.get('to') ? new Date(url.searchParams.get('to')!) : null;
-
-    // SETTINGS: start_date and custom_plan_json
+    // SETTINGS
     const settingsRows = await prisma.setting.findMany();
-    const S: Record<string, string> = {};
-    settingsRows.forEach(r => (S[r.key] = r.value));
+    const S: Record<string,string> = {};
+    settingsRows.forEach(r => S[r.key] = r.value);
 
-    const start = S['start_date'] ? new Date(S['start_date']) : new Date();
-    let plan = defaultPlan();
-    if (S['custom_plan_json']) {
-      try { plan = JSON.parse(S['custom_plan_json']); } catch {}
-    }
+    const incUpper = num(S['inc_upper'], 5);
+    const incLower = num(S['inc_lower'], 10);
+    const incAssist = num(S['inc_assist'], 5);
 
-    // PLANNED weekly mileage (12 weeks)
-    const plannedWeekly = plan.map(week => week.reduce((acc, d) => acc + (d.includes('Rest') ? 0 : miles(d)), 0));
+    const push: Ex[] = [
+      { name:'Incline Chest Press (Machine)', key:'start_incline',  start:num(S['start_incline'],35), region:'upper' },
+      { name:'Shoulder Press (Machine)',      key:'start_shoulder', start:num(S['start_shoulder'],35), region:'upper' },
+      { name:'Assisted Chest Dips',           key:'start_dips',     start:num(S['start_dips'],60), region:'upper', assisted:true },
+    ];
+    const pull: Ex[] = [
+      { name:'Seated Rows (Machine)',         key:'start_rows', start:num(S['start_rows'],90), region:'upper' },
+      { name:'Assisted Pull-ups/Chin-ups',    key:'start_pu',   start:num(S['start_pu'],60), region:'upper', assisted:true },
+      { name:'Lat Pulldowns (Machine)',       key:'start_lat',  start:num(S['start_lat'],75), region:'upper' },
+    ];
+    const legs: Ex[] = [
+      { name:'Leg Press (Machine)',           key:'start_legpress', start:num(S['start_legpress'],160), region:'lower' },
+      { name:'Hamstring Curl (Machine)',      key:'start_ham',      start:num(S['start_ham'],60), region:'lower' },
+      { name:'Calf Raises (Machine)',         key:'start_calf',     start:num(S['start_calf'],45), region:'lower' },
+    ];
 
-    // ACTUAL runs by week index relative to start_date
-    const where: any = {};
-    if (from || to) {
-      where.logDate = {};
-      if (from) where.logDate.gte = from;
-      if (to)   where.logDate.lte = to;
-    }
-    const runs = await prisma.runLog.findMany({ where });
+    const all = [...push, ...pull, ...legs];
 
-    const actualByWeek = new Map<number, number>();
-    for (const r of runs) {
-      const idx = weekIndex(new Date(r.logDate), start);
-      if (idx < 1 || idx > 52) continue; // guard
-      const prev = actualByWeek.get(idx) || 0;
-      actualByWeek.set(idx, prev + (r.actualDistance ?? 0));
-    }
-
-    const weekly = plannedWeekly.map((planned, i) => {
-      const wk = i + 1;
-      const actual = actualByWeek.get(wk) || 0;
-      return { week: wk, planned, actual };
+    // PLANNED weekly volume = sum(weight * 3 * 8) across planned targets
+    const plan = buildWeeks(all, incUpper, incLower, incAssist);
+    const plannedWeekly = plan.weeks.map((wIdx) => {
+      let vol = 0;
+      for (const row of plan.rows) {
+        const wt = row.weights[wIdx-1] || 0;
+        if (wt > 0) vol += wt * 3 * 8;
+      }
+      return vol;
     });
 
-    // For optional scatter: day-level actual pace and RPE
-    const byDay = runs
-      .map(r => ({
-        date: new Date(r.logDate).toISOString(),
-        type: r.runType || '',
-        actualPace: r.actualPace || '',
-        rpe: r.rpe ?? null,
-        distance: r.actualDistance ?? null,
-      }))
-      .sort((a,b)=> (a.date < b.date ? -1 : 1));
+    // START DATE
+    const start = S['start_date'] ? new Date(S['start_date']) : new Date();
 
-    return NextResponse.json({ weekly, byDay }, { status: 200 });
+    // ACTUAL volume by week from lift_logs
+    const lifts = await prisma.liftLog.findMany({});
+    const actualByWeek = new Map<number, number>();
+    for (const l of lifts) {
+      const d = new Date(l.logDate);
+      const days = Math.floor((d.getTime() - start.getTime()) / (1000*60*60*24));
+      const wk = Math.floor(days / 7) + 1;
+      if (wk < 1 || wk > 52) continue;
+      const thisVol = (l.weight ?? 0) * (l.sets ?? 0) * (l.reps ?? 0);
+      actualByWeek.set(wk, (actualByWeek.get(wk) || 0) + thisVol);
+    }
+
+    const weekly = plan.weeks.map(wk => ({
+      week: wk,
+      planned: plannedWeekly[wk-1] || 0,
+      actual: actualByWeek.get(wk) || 0
+    }));
+
+    // Per-exercise progress series
+    // target: weekly target on a notional date (start + 7*(week-1))
+    // actual: actual session points on real dates
+    const series: Record<string, { date: string; target?: number; actual?: number }[]> = {};
+    for (const row of plan.rows) {
+      series[row.name] = plan.weeks.map((wk, i)=>({
+        date: new Date(start.getTime() + (i*7)*24*60*60*1000).toISOString().slice(0,10),
+        target: row.weights[i] || 0
+      }));
+    }
+    for (const l of lifts) {
+      const name = l.exercise || '';
+      if (!series[name]) series[name] = [];
+      series[name].push({
+        date: new Date(l.logDate).toISOString().slice(0,10),
+        actual: l.weight ?? 0
+      });
+    }
+
+    return NextResponse.json({ weekly, series }, { status: 200 });
   } catch (e: any) {
-    console.error('GET /api/stats/running', e);
+    console.error('GET /api/stats/lifting', e);
     return NextResponse.json({ ok: false, error: e?.message || 'error' }, { status: 500 });
   }
 }
