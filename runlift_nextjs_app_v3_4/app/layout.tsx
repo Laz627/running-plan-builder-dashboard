@@ -25,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <a className="navlink" href="/plan">Plan</a>
                   <a className="navlink" href="/charts">Charts</a>
                   <a className="navlink" href="/lift">Lift</a>
+                  <a className="navlink" href="/history">History</a>
                   <a className="navlink" href="/settings">Settings</a>
                   <ThemeToggle />
                 </nav>
@@ -37,11 +38,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           {/* Mobile bottom nav */}
           <nav className="sm:hidden fixed bottom-0 left-0 right-0 border-t border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-[rgb(var(--card))]/90 backdrop-blur">
-            <div className="container grid grid-cols-4 text-sm">
+            <div className="container grid grid-cols-5 text-sm">
               <a className="navlink justify-center" href="/today">Today</a>
               <a className="navlink justify-center" href="/plan">Plan</a>
               <a className="navlink justify-center" href="/charts">Charts</a>
               <a className="navlink justify-center" href="/lift">Lift</a>
+              <a className="navlink justify-center" href="/history">History</a>
             </div>
           </nav>
         </Providers>
