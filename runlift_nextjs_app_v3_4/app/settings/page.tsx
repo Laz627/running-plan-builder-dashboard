@@ -7,8 +7,6 @@ import Card from '@/components/Card';
 import { toast } from '@/components/Toaster';
 import Fade from '@/components/Fade';
 
-const Fade = ({children}:{children:React.ReactNode}) => (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} transition={{duration:0.25}}>{children}</motion.div>);
-
 export default function SettingsPage(){
   const [form, setForm] = useState<any>({
     start_incline:'35', start_shoulder:'35', start_dips:'60', start_rows:'90', start_pu:'60', start_lat:'75', start_legpress:'160', start_ham:'60', start_calf:'45',
