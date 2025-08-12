@@ -65,8 +65,8 @@ body {
          bg-white dark:bg-gray-900 px-3 py-2 text-sm;
 }
 
-/* Tables: let content define width so it can overflow horizontally */
-.table { @apply text-sm; width: max-content; }   /* <— key change */
+/* Tables: fill the card, no forced overflow */
+.table { @apply w-full text-sm; table-layout: auto; }
 .table th { @apply p-2 text-left text-gray-600 dark:text-gray-300; }
 .table td { @apply p-2; }
 
