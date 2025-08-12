@@ -7,10 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// SETTINGS table -> maps to existing "settings" with id/key/value
+// SETTINGS table -> maps to existing "settings" with key as primary key
 model Setting {
-  id    Int    @id @default(autoincrement())
-  key   String @unique @db.Text
+  key   String @id @db.Text
   value String @db.Text
 
   @@map("settings")
