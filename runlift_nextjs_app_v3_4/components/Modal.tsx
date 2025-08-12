@@ -7,7 +7,7 @@ type ModalProps = {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
-  maxWidthClass?: string; // 'max-w-xl' | 'max-w-2xl'
+  maxWidthClass?: string; // 'max-w-xl' | 'max-w-2xl' etc.
 };
 
 export default function Modal({
@@ -19,7 +19,7 @@ export default function Modal({
 }: ModalProps) {
   const scrollYRef = useRef<number>(0);
 
-  // Lock page scroll when modal is open; restore on close
+  // Lock background scroll when open; restore on close
   useEffect(() => {
     if (!open) return;
 
@@ -32,7 +32,7 @@ export default function Modal({
     body.style.left = '0';
     body.style.right = '0';
     body.style.width = '100%';
-    body.style.overflow = 'hidden'; // block horizontal/vertical
+    body.style.overflow = 'hidden'; // block bg scrolling (x & y)
     html.style.overscrollBehavior = 'none';
 
     return () => {
@@ -55,14 +55,14 @@ export default function Modal({
       role="dialog"
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
     >
-      {/* backdrop */}
+      {/* Backdrop */}
       <button
         aria-label="Close modal"
         className="absolute inset-0 bg-black/50"
         onClick={onClose}
       />
 
-      {/* panel */}
+      {/* Panel (mobile = bottom sheet; desktop = centered card) */}
       <div
         className={`
           relative w-full sm:${maxWidthClass}
@@ -74,6 +74,7 @@ export default function Modal({
           overflow-hidden
         `}
       >
+        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg sm:text-xl font-semibold">{title}</h2>
           <button
@@ -84,10 +85,19 @@ export default function Modal({
           </button>
         </div>
 
-        {/* Only this region scrolls; prevent horizontal overflow */}
+        {/* Scrollable content ONLY inside the modal */}
         <div
-          className="space-y-4 overflow-y-auto overscroll-contain overflow-x-hidden min-w-0"
-          style={{ maxHeight: 'calc(92vh - 64px)' }}
+          className="
+            space-y-4
+            overflow-y-auto overflow-x-auto   /* allow horizontal scroll if needed */
+            overscroll-contain
+            min-w-0
+            touch-pan-y                        /* ensure vertical touch scroll works */
+          "
+          style={{
+            maxHeight: 'calc(92vh - 64px)',   // header height fudge on mobile
+            WebkitOverflowScrolling: 'touch',  // iOS momentum scrolling
+          }}
         >
           {children}
         </div>
