@@ -52,3 +52,21 @@ body { background-color: rgb(var(--bg)); color: rgb(var(--fg)); }
 
 /* iOS tap highlight subtle */
 * { -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  overflow-x: hidden;            /* no horizontal page scroll */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Ensure tables don’t force horizontal page scrolling */
+.table {
+  width: 100%;
+  table-layout: auto;
+}
+
+/* Inputs stretch full width by default (nice on mobile) */
+.input { width: 100%; }
+
+/* Nicer touch feel */
+* { -webkit-tap-highlight-color: transparent; }
+
