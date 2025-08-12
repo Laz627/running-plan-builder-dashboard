@@ -1,10 +1,8 @@
-import { motion } from 'framer-motion';
-
 'use client';
-import Fade from '@/components/Fade';
 
-import { useEffect, useState } from 'react';
+import Fade from '@/components/Fade';
 import Card from '@/components/Card';
+import { useEffect, useState } from 'react';
 import { toast } from '@/components/Toaster';
 
 const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -27,52 +25,58 @@ function defaultPlan(){
 }
 
 export default function PlanPage(){
-  const [settings, setSettings] = useState<any>({});
   const [plan, setPlan] = useState<string[][]>(defaultPlan());
 
-  useEffect(()=>{ fetch('/api/settings').then(r=>r.json()).then(s=>{
-    setSettings(s);
-    if (s.custom_plan_json) try { setPlan(JSON.parse(s.custom_plan_json)); } catch {}
-  }); }, []);
+  useEffect(()=>{ 
+    fetch('/api/settings').then(r=>r.json()).then(s=>{
+      if (s.custom_plan_json) try { setPlan(JSON.parse(s.custom_plan_json)); } catch {}
+    });
+  }, []);
 
   function save(){
-    fetch('/api/settings',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({custom_plan_json: JSON.stringify(plan)})})
-      .then(()=> toast({ title: 'Plan saved', description: 'Your 12-week plan has been updated.' }));
+    fetch('/api/settings',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ custom_plan_json: JSON.stringify(plan) })
+    }).then(()=> toast({ title: 'Plan saved', description: 'Your 12-week plan has been updated.' }));
   }
 
   return (
     <Fade>
       <Card title="Editable 12-Week Plan">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr><th className="p-2 text-left">Week</th>{days.map(d=><th key={d} className="p-2">{d}</th>)}</tr>
-          </thead>
-          <tbody>
-            {plan.map((row, w)=> (
-              <tr key={w} className="border-t">
-                <td className="p-2 font-medium">Week {w+1}</td>
-                {row.map((cell, i)=> (
-                  <td key={i} className="p-1">
-                    <textarea
-                      className="w-full min-w-[160px] border rounded-xl px-2 py-1"
-                      value={cell}
-                      onChange={e=>{
-                        const next = plan.map(r=>r.slice());
-                        next[w][i] = e.target.value;
-                        setPlan(next);
-                      }}
-                    />
-                  </td>
-                ))}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className="p-2 text-left">Week</th>
+                {days.map(d=><th key={d} className="p-2">{d}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex justify-end mt-3">
-        <button onClick={save} className="btn">Save Plan</button>
-      </div>
-    </Card>
+            </thead>
+            <tbody>
+              {plan.map((row, w)=> (
+                <tr key={w} className="border-t">
+                  <td className="p-2 font-medium">Week {w+1}</td>
+                  {row.map((cell, i)=> (
+                    <td key={i} className="p-1">
+                      <textarea
+                        className="input"
+                        value={cell}
+                        onChange={e=>{
+                          const next = plan.map(r=>r.slice());
+                          next[w][i] = e.target.value;
+                          setPlan(next);
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex justify-end mt-3">
+          <button onClick={save} className="btn">Save Plan</button>
+        </div>
+      </Card>
+    </Fade>
   );
 }
