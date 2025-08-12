@@ -11,25 +11,24 @@ import {
 const prisma = new PrismaClient();
 
 type RunPayload = {
-  logDate: string;           // ISO
+  logDate: string;
   runType?: string | null;   // 'Tempo' | 'MP' | 'Easy' | 'Recovery' | 'Speed'
   plannedDesc?: string | null;
   targetPaceCool?: string | null;
   targetPaceHeat?: string | null;
   actualDistance?: number | null;
-  actualPace?: string | null;   // "mm:ss"
+  actualPace?: string | null;  // "mm:ss"
   rpe?: number | null;
   notes?: string | null;
 };
 
-// map runType → main pace key in settings
 function keyForType(type: string): string | null {
   const t = type.toLowerCase();
   if (t.includes('tempo')) return 'tempo_base';
   if (t.includes('recovery')) return 'recovery_base';
   if (t === 'easy' || t.includes('easy')) return 'easy_base';
   if (t.includes('mp')) return 'goal_mp';
-  return null; // skip 'speed' etc.
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -51,7 +50,7 @@ export async function POST(req: Request) {
       },
     });
 
-    // 2) Auto-adjust pacing for the *next workout of the same type*
+    // 2) Per-type pace auto-adjust
     const rpe = body.rpe ?? 7;
     const typeKey = body.runType ? keyForType(body.runType) : null;
 
@@ -60,24 +59,22 @@ export async function POST(req: Request) {
       const baselineKey = `${typeKey}_baseline`;      // e.g., 'tempo_base_baseline'
       const adjKey = `${typeKey}_adj`;                // e.g., 'tempo_base_adj' (seconds)
 
-      // Get current values
-      const curr = await getSetting(baseKey, '');
+      // Seed baseline on first use
+      const currentStored = await getSetting(baseKey, '');
       let baseline = await getSetting(baselineKey, '');
-      if (!baseline && curr) {
-        // First time: seed the baseline with current
-        baseline = curr;
+      if (!baseline && currentStored) {
+        baseline = currentStored;
         await setSettings({ [baselineKey]: baseline });
       }
 
-      // If still no baseline, we can't adjust safely
       if (baseline) {
         const currAdj = num(await getSetting(adjKey, '0'), 0);
         const nextAdj = nextAdjustmentSeconds(currAdj, rpe);
         const nextPace = adjustedPaceFromBaseline(baseline, nextAdj);
 
         await setSettings({
-          [adjKey]: String(nextAdj), // persist cumulative adjustment (seconds)
-          [baseKey]: nextPace,       // keep UI compatible: store adjusted pace in the usual key
+          [adjKey]: String(nextAdj),
+          [baseKey]: nextPace,
         });
       }
     }
