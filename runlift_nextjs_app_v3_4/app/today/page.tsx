@@ -37,8 +37,6 @@ function fueling(desc:string){
   return 'Pre: 12–16 oz + electrolytes; 30–40g carbs pre; 3–5 oz water q15–20m; 20–30g carbs q30–40m';
 }
 
-const Fade = ({children}:{children:React.ReactNode}) => (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} transition={{duration:0.25}}>{children}</motion.div>);
-
 export default function TodayPage(){
   const [settings, setSettings] = useState<any>({});
   const [plan, setPlan] = useState<string[][]>(defaultPlan());
