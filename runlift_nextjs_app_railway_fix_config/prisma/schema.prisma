@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,12 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// <-- Map to existing table: settings
 model Setting {
   id    Int    @id @default(autoincrement())
   key   String @unique
   value String
+
+  @@map("settings")
 }
 
+// <-- Map to existing table: run_logs
 model RunLog {
   id              Int      @id @default(autoincrement())
   logDate         DateTime
@@ -26,8 +29,11 @@ model RunLog {
   rpe             Int?
   notes           String?
   createdAt       DateTime @default(now())
+
+  @@map("run_logs")
 }
 
+// <-- Map to existing table: lift_logs
 model LiftLog {
   id        Int      @id @default(autoincrement())
   logDate   DateTime
@@ -39,4 +45,6 @@ model LiftLog {
   rpe       Int?
   notes     String?
   createdAt DateTime @default(now())
+
+  @@map("lift_logs")
 }
