@@ -2,320 +2,143 @@
 
 import Fade from '@/components/Fade';
 import Card from '@/components/Card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs';
-import { useEffect, useMemo, useState } from 'react';
-
-type RunLog = {
-  id: number;
-  logDate: string;
-  runType?: string | null;
-  plannedDesc?: string | null;
-  targetPaceCool?: string | null;
-  targetPaceHeat?: string | null;
-  actualDistance?: number | null;
-  actualPace?: string | null;
-  rpe?: number | null;
-  notes?: string | null;
-};
-
-type LiftLog = {
-  id: number;
-  logDate: string;
-  dayType?: string | null;
-  exercise?: string | null;
-  weight?: number | null;
-  sets?: number | null;
-  reps?: number | null;
-  rpe?: number | null;
-  notes?: string | null;
-};
-
-function fmtDate(s: string) {
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return s;
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function toCSV(rows: any[], headers: string[]): string {
-  const esc = (v: any) => {
-    const s = v == null ? '' : String(v);
-    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-  const head = headers.join(',');
-  const body = rows.map(r => headers.map(h => esc(r[h])).join(',')).join('\n');
-  return `${head}\n${body}`;
-}
+import { useEffect, useState } from 'react';
+import EditRunModal, { RunLog } from '@/components/EditRunModal';
+import EditLiftModal, { LiftLog } from '@/components/EditLiftModal';
 
 export default function HistoryPage() {
-  const [type, setType] = useState<'all' | 'run' | 'lift'>('all');
-  const [from, setFrom] = useState<string>('');
-  const [to, setTo] = useState<string>('');
-  const [q, setQ] = useState<string>('');
   const [runs, setRuns] = useState<RunLog[]>([]);
   const [lifts, setLifts] = useState<LiftLog[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
+
+  // modal state
+  const [runOpen, setRunOpen] = useState(false);
+  const [liftOpen, setLiftOpen] = useState(false);
+  const [selectedRun, setSelectedRun] = useState<RunLog | null>(null);
+  const [selectedLift, setSelectedLift] = useState<LiftLog | null>(null);
 
   async function load() {
     setLoading(true);
-    const params = new URLSearchParams();
-    params.set('type', type);
-    params.set('limit', '200');
-    if (from) params.set('from', from);
-    if (to) params.set('to', to);
-    const res = await fetch(`/api/logs/history?${params.toString()}`);
-    const data = await res.json();
-    setRuns(data.runs || []);
-    setLifts(data.lifts || []);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/logs/history?type=all&limit=200');
+      const data = await res.json();
+      setRuns((data.runs || []).map((r: any) => ({ ...r })));
+      setLifts((data.lifts || []).map((l: any) => ({ ...l })));
+    } finally {
+      setLoading(false);
+    }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [type]);
+  useEffect(() => { load(); }, []);
 
-  const filteredRuns = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return runs;
-    return runs.filter(r =>
-      (r.runType || '').toLowerCase().includes(qq) ||
-      (r.plannedDesc || '').toLowerCase().includes(qq) ||
-      (r.notes || '').toLowerCase().includes(qq)
-    );
-  }, [runs, q]);
-
-  const filteredLifts = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return lifts;
-    return lifts.filter(l =>
-      (l.dayType || '').toLowerCase().includes(qq) ||
-      (l.exercise || '').toLowerCase().includes(qq) ||
-      (l.notes || '').toLowerCase().includes(qq)
-    );
-  }, [lifts, q]);
-
-  function exportRuns() {
-    const headers = ['date', 'type', 'planned', 'targetCool', 'targetHeat', 'distance', 'pace', 'rpe', 'notes'];
-    const rows = filteredRuns.map(r => ({
-      date: fmtDate(r.logDate),
-      type: r.runType || '',
-      planned: r.plannedDesc || '',
-      targetCool: r.targetPaceCool || '',
-      targetHeat: r.targetPaceHeat || '',
-      distance: r.actualDistance ?? '',
-      pace: r.actualPace || '',
-      rpe: r.rpe ?? '',
-      notes: r.notes || '',
-    }));
-    const blob = new Blob([toCSV(rows, headers)], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `runs_history.csv`; a.click();
-    URL.revokeObjectURL(url);
+  function openRun(r: RunLog) {
+    setSelectedRun(r);
+    setRunOpen(true);
+  }
+  function openLift(l: LiftLog) {
+    setSelectedLift(l);
+    setLiftOpen(true);
   }
 
-  function exportLifts() {
-    const headers = ['date', 'day', 'exercise', 'weight', 'sets', 'reps', 'rpe', 'notes'];
-    const rows = filteredLifts.map(l => ({
-      date: fmtDate(l.logDate),
-      day: l.dayType || '',
-      exercise: l.exercise || '',
-      weight: l.weight ?? '',
-      sets: l.sets ?? '',
-      reps: l.reps ?? '',
-      rpe: l.rpe ?? '',
-      notes: l.notes || '',
-    }));
-    const blob = new Blob([toCSV(rows, headers)], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `lifts_history.csv`; a.click();
-    URL.revokeObjectURL(url);
+  async function deleteRun(id: number) {
+    const ok = await fetch(`/api/logs/run/${id}`, { method: 'DELETE' }).then(r=>r.ok).catch(()=>false);
+    if (ok) load();
+  }
+  async function deleteLift(id: number) {
+    const ok = await fetch(`/api/logs/lift/${id}`, { method: 'DELETE' }).then(r=>r.ok).catch(()=>false);
+    if (ok) load();
   }
 
   return (
     <Fade>
       <div className="grid gap-4">
-        <Card title="Filters">
-          <div className="grid gap-3 sm:grid-cols-5">
-            <label className="text-sm col-span-2">
-              From
-              <input
-                type="date"
-                className="input"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </label>
-            <label className="text-sm col-span-2">
-              To
-              <input
-                type="date"
-                className="input"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </label>
-            <div className="flex items-end gap-2">
-              <button
-                className="btn"
-                onClick={() => load()}
-                disabled={loading}
-                aria-label="Apply filters"
-              >
-                {loading ? 'Loading…' : 'Apply'}
-              </button>
+        <Card title="Runs">
+          {loading ? (
+            <div className="py-6 text-sm text-gray-500">Loading…</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Type</th><th>Mi</th><th>Pace</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map(r => (
+                    <tr key={r.id} className="border-t">
+                      <td className="p-2">{new Date(r.logDate).toISOString().slice(0,10)}</td>
+                      <td className="p-2">{r.runType}</td>
+                      <td className="p-2">{r.actualDistance ?? ''}</td>
+                      <td className="p-2">{r.actualPace ?? ''}</td>
+                      <td className="p-2">{r.rpe ?? ''}</td>
+                      <td className="p-2 max-w-[280px] truncate sm:whitespace-normal sm:max-w-none">{r.notes ?? ''}</td>
+                      <td className="p-2 whitespace-nowrap">
+                        <button className="btn mr-2" onClick={() => openRun(r)}>Edit</button>
+                        <button className="btn" onClick={() => deleteRun(r.id)}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {runs.length === 0 && (
+                    <tr><td colSpan={7} className="p-2 text-sm text-gray-500">No runs logged yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <label className="text-sm sm:col-span-3">
-              Search
-              <input
-                className="input"
-                placeholder="tempo, leg press, notes…"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </label>
-          </div>
+          )}
         </Card>
 
-        <Tabs defaultValue="all" onValueChange={(v) => setType(v as any)}>
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="run">Runs</TabsTrigger>
-            <TabsTrigger value="lift">Lifts</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="all">
-            <Card title="Recent Runs">
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th><th>Type</th><th>Planned</th><th>Distance</th><th>Pace</th><th>RPE</th><th>Notes</th>
+        <Card title="Lifts">
+          {loading ? (
+            <div className="py-6 text-sm text-gray-500">Loading…</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lifts.map(l => (
+                    <tr key={l.id} className="border-t">
+                      <td className="p-2">{new Date(l.logDate).toISOString().slice(0,10)}</td>
+                      <td className="p-2">{l.dayType}</td>
+                      <td className="p-2">{l.exercise}</td>
+                      <td className="p-2">{l.weight ?? ''}</td>
+                      <td className="p-2">{(l.sets ?? 0)}×{(l.reps ?? 0)}</td>
+                      <td className="p-2">{l.rpe ?? ''}</td>
+                      <td className="p-2 max-w-[280px] truncate sm:whitespace-normal sm:max-w-none">{l.notes ?? ''}</td>
+                      <td className="p-2 whitespace-nowrap">
+                        <button className="btn mr-2" onClick={() => openLift(l)}>Edit</button>
+                        <button className="btn" onClick={() => deleteLift(l.id)}>Delete</button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRuns.map((r) => (
-                      <tr key={`r-${r.id}`} className="border-t">
-                        <td className="p-2">{fmtDate(r.logDate)}</td>
-                        <td className="p-2">{r.runType || ''}</td>
-                        <td className="p-2">{r.plannedDesc || ''}</td>
-                        <td className="p-2">{r.actualDistance ?? ''}</td>
-                        <td className="p-2">{r.actualPace || ''}</td>
-                        <td className="p-2">{r.rpe ?? ''}</td>
-                        <td className="p-2">{r.notes || ''}</td>
-                      </tr>
-                    ))}
-                    {filteredRuns.length === 0 && (
-                      <tr><td className="p-2 text-sm" colSpan={7}>No runs found.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 flex justify-end">
-                <button className="btn" onClick={exportRuns}>Export Runs CSV</button>
-              </div>
-            </Card>
-
-            <div className="h-2" />
-
-            <Card title="Recent Lifts">
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLifts.map((l) => (
-                      <tr key={`l-${l.id}`} className="border-t">
-                        <td className="p-2">{fmtDate(l.logDate)}</td>
-                        <td className="p-2">{l.dayType || ''}</td>
-                        <td className="p-2">{l.exercise || ''}</td>
-                        <td className="p-2">{l.weight ?? ''}</td>
-                        <td className="p-2">{(l.sets ?? 0)}×{(l.reps ?? 0)}</td>
-                        <td className="p-2">{l.rpe ?? ''}</td>
-                        <td className="p-2">{l.notes || ''}</td>
-                      </tr>
-                    ))}
-                    {filteredLifts.length === 0 && (
-                      <tr><td className="p-2 text-sm" colSpan={7}>No lifts found.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 flex justify-end">
-                <button className="btn" onClick={exportLifts}>Export Lifts CSV</button>
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="run">
-            <Card title="Runs">
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th><th>Type</th><th>Planned</th><th>Distance</th><th>Pace</th><th>RPE</th><th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRuns.map((r) => (
-                      <tr key={`r2-${r.id}`} className="border-t">
-                        <td className="p-2">{fmtDate(r.logDate)}</td>
-                        <td className="p-2">{r.runType || ''}</td>
-                        <td className="p-2">{r.plannedDesc || ''}</td>
-                        <td className="p-2">{r.actualDistance ?? ''}</td>
-                        <td className="p-2">{r.actualPace || ''}</td>
-                        <td className="p-2">{r.rpe ?? ''}</td>
-                        <td className="p-2">{r.notes || ''}</td>
-                      </tr>
-                    ))}
-                    {filteredRuns.length === 0 && (
-                      <tr><td className="p-2 text-sm" colSpan={7}>No runs found.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 flex justify-end">
-                <button className="btn" onClick={exportRuns}>Export Runs CSV</button>
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="lift">
-            <Card title="Lifts">
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLifts.map((l) => (
-                      <tr key={`l2-${l.id}`} className="border-t">
-                        <td className="p-2">{fmtDate(l.logDate)}</td>
-                        <td className="p-2">{l.dayType || ''}</td>
-                        <td className="p-2">{l.exercise || ''}</td>
-                        <td className="p-2">{l.weight ?? ''}</td>
-                        <td className="p-2">{(l.sets ?? 0)}×{(l.reps ?? 0)}</td>
-                        <td className="p-2">{l.rpe ?? ''}</td>
-                        <td className="p-2">{l.notes || ''}</td>
-                      </tr>
-                    ))}
-                    {filteredLifts.length === 0 && (
-                      <tr><td className="p-2 text-sm" colSpan={7}>No lifts found.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 flex justify-end">
-                <button className="btn" onClick={exportLifts}>Export Lifts CSV</button>
-              </div>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                  ))}
+                  {lifts.length === 0 && (
+                    <tr><td colSpan={8} className="p-2 text-sm text-gray-500">No lifts logged yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       </div>
+
+      {/* Modals */}
+      <EditRunModal
+        open={runOpen}
+        onClose={() => setRunOpen(false)}
+        entry={selectedRun}
+        onSaved={load}
+        onDeleted={load}
+      />
+      <EditLiftModal
+        open={liftOpen}
+        onClose={() => setLiftOpen(false)}
+        entry={selectedLift}
+        onSaved={load}
+        onDeleted={load}
+      />
     </Fade>
   );
 }
