@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,35 +7,51 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/**
+ * SETTINGS — maps to your existing `settings` table.
+ * Assumes columns: key TEXT PRIMARY KEY, value TEXT
+ */
 model Setting {
-  id    Int    @id @default(autoincrement())
-  key   String @unique
-  value String
+  key   String @id @db.Text
+  value String @db.Text
+
+  @@map("settings")
 }
 
+/**
+ * RUN LOGS — create these tables if they don’t already exist.
+ * Feel free to adjust names/columns if you already created different ones.
+ */
 model RunLog {
   id              Int      @id @default(autoincrement())
   logDate         DateTime
-  runType         String?
-  plannedDesc     String?
-  targetPaceCool  String?
-  targetPaceHeat  String?
+  runType         String?  @db.Text
+  plannedDesc     String?  @db.Text
+  targetPaceCool  String?  @db.Text
+  targetPaceHeat  String?  @db.Text
   actualDistance  Float?
-  actualPace      String?
+  actualPace      String?  @db.Text
   rpe             Int?
-  notes           String?
+  notes           String?  @db.Text
   createdAt       DateTime @default(now())
+
+  @@map("run_logs")
 }
 
+/**
+ * LIFT LOGS
+ */
 model LiftLog {
   id        Int      @id @default(autoincrement())
   logDate   DateTime
-  dayType   String?
-  exercise  String?
+  dayType   String?  @db.Text
+  exercise  String?  @db.Text
   weight    Float?
   sets      Int?
   reps      Int?
   rpe       Int?
-  notes     String?
+  notes     String?  @db.Text
   createdAt DateTime @default(now())
+
+  @@map("lift_logs")
 }
