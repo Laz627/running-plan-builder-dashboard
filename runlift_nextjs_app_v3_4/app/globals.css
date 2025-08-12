@@ -65,10 +65,13 @@ body {
          bg-white dark:bg-gray-900 px-3 py-2 text-sm;
 }
 
-/* Tables */
-.table { @apply w-full text-sm; table-layout: auto; }
+/* Tables: let content define width so it can overflow horizontally */
+.table { @apply text-sm; width: max-content; }   /* <— key change */
 .table th { @apply p-2 text-left text-gray-600 dark:text-gray-300; }
 .table td { @apply p-2; }
+
+/* If you ever need a full-width table inside a card, opt-in: */
+.table-fluid { width: 100%; table-layout: auto; }
 
 /* Charts */
 :root { --chart-stroke: #111; }
