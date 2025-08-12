@@ -39,10 +39,9 @@ function isoToday() {
 }
 
 export default function TodayPage() {
-  // ---------- recent lists ----------
+  // ---------- lists ----------
   const [recentRuns, setRecentRuns] = useState<RunLog[]>([]);
   const [recentLifts, setRecentLifts] = useState<LiftLog[]>([]);
-
   async function loadRecent() {
     const r = await fetch('/api/logs/history?type=all&limit=30').then((r) => r.json());
     setRecentRuns(r.runs || []);
@@ -61,7 +60,6 @@ export default function TodayPage() {
     rpe: 7,
     notes: '',
   });
-
   function setRunField<K extends keyof RunLog>(k: K, v: any) {
     setRun((f) => ({ ...f, [k]: v }));
   }
@@ -98,21 +96,15 @@ export default function TodayPage() {
     }).then((r) => r.ok).catch(() => false);
     if (ok) {
       toast({ title: editingRunId ? 'Run updated' : 'Run saved', description: 'Entry stored successfully.' });
-      setRunOpen(false);
-      resetRunForm();
-      loadRecent();
+      setRunOpen(false); resetRunForm(); loadRecent();
     } else {
       toast({ title: 'Error', description: 'Could not save run.' });
     }
   }
   async function deleteRun(id: number) {
     const ok = await fetch(`/api/logs/run/${id}`, { method: 'DELETE' }).then((r) => r.ok).catch(() => false);
-    if (ok) {
-      toast({ title: 'Run deleted', description: 'Entry removed.' });
-      loadRecent();
-    } else {
-      toast({ title: 'Error', description: 'Could not delete run.' });
-    }
+    if (ok) { toast({ title: 'Run deleted', description: 'Entry removed.' }); loadRecent(); }
+    else { toast({ title: 'Error', description: 'Could not delete run.' }); }
   }
 
   // ---------- LIFT modal ----------
@@ -128,7 +120,6 @@ export default function TodayPage() {
     rpe: 7,
     notes: '',
   });
-
   function setLiftField<K extends keyof LiftLog>(k: K, v: any) {
     setLift((f) => ({ ...f, [k]: v }));
   }
@@ -164,24 +155,18 @@ export default function TodayPage() {
     }).then((r) => r.ok).catch(() => false);
     if (ok) {
       toast({ title: editingLiftId ? 'Lift updated' : 'Lift saved', description: 'Entry stored successfully.' });
-      setLiftOpen(false);
-      resetLiftForm();
-      loadRecent();
+      setLiftOpen(false); resetLiftForm(); loadRecent();
     } else {
       toast({ title: 'Error', description: 'Could not save lift.' });
     }
   }
   async function deleteLift(id: number) {
     const ok = await fetch(`/api/logs/lift/${id}`, { method: 'DELETE' }).then((r) => r.ok).catch(() => false);
-    if (ok) {
-      toast({ title: 'Lift deleted', description: 'Entry removed.' });
-      loadRecent();
-    } else {
-      toast({ title: 'Error', description: 'Could not delete lift.' });
-    }
+    if (ok) { toast({ title: 'Lift deleted', description: 'Entry removed.' }); loadRecent(); }
+    else { toast({ title: 'Error', description: 'Could not delete lift.' }); }
   }
 
-  // ---------- open by query param (optional deep-link from History) ----------
+  // Deep-link edit (?editRunId / ?editLiftId)
   useEffect(() => {
     const u = new URL(window.location.href);
     const er = u.searchParams.get('editRunId');
@@ -210,83 +195,91 @@ export default function TodayPage() {
 
           {/* ---------- RUN TAB ---------- */}
           <TabsContent value="run">
-            <Card title="Log or Edit a Run">
-              <div className="flex flex-wrap gap-2">
-                <button className="btn" onClick={() => openRunEditor()}>New Run</button>
-              </div>
-            </Card>
+            <div className="mb-8">
+              <Card title="Log or Edit a Run">
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn" onClick={() => openRunEditor()}>New Run</button>
+                </div>
+              </Card>
+            </div>
 
-            <Card title="Recent Runs">
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th><th>Type</th><th>Mi</th><th>Pace</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentRuns.map((r) => (
-                      <tr key={r.id} className="border-t">
-                        <td className="p-2">{new Date(r.logDate).toISOString().slice(0, 10)}</td>
-                        <td className="p-2">{r.runType}</td>
-                        <td className="p-2">{r.actualDistance ?? ''}</td>
-                        <td className="p-2">{r.actualPace ?? ''}</td>
-                        <td className="p-2">{r.rpe ?? ''}</td>
-                        <td className="p-2 max-w-[280px] truncate sm:whitespace-normal sm:max-w-none">{r.notes ?? ''}</td>
-                        <td className="p-2 whitespace-nowrap">
-                          <button className="btn mr-2" onClick={() => openRunEditor(r as any)}>Edit</button>
-                          <button className="btn" onClick={() => deleteRun(r.id!)}>Delete</button>
-                        </td>
+            <div className="mt-8">
+              <Card title="Recent Runs">
+                <div className="overflow-x-auto">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Date</th><th>Type</th><th>Mi</th><th>Pace</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
                       </tr>
-                    ))}
-                    {recentRuns.length === 0 && (
-                      <tr><td colSpan={7} className="p-2 text-sm text-gray-500">No runs yet.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                    </thead>
+                    <tbody>
+                      {recentRuns.map((r) => (
+                        <tr key={r.id} className="border-t">
+                          <td className="p-2">{new Date(r.logDate).toISOString().slice(0, 10)}</td>
+                          <td className="p-2">{r.runType}</td>
+                          <td className="p-2">{r.actualDistance ?? ''}</td>
+                          <td className="p-2">{r.actualPace ?? ''}</td>
+                          <td className="p-2">{r.rpe ?? ''}</td>
+                          <td className="p-2 max-w-[280px] truncate sm:whitespace-normal sm:max-w-none">{r.notes ?? ''}</td>
+                          <td className="p-2 whitespace-nowrap">
+                            <button className="btn mr-2" onClick={() => openRunEditor(r as any)}>Edit</button>
+                            <button className="btn" onClick={() => deleteRun(r.id!)}>Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {recentRuns.length === 0 && (
+                        <tr><td colSpan={7} className="p-2 text-sm text-gray-500">No runs yet.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* ---------- LIFT TAB ---------- */}
           <TabsContent value="lift">
-            <Card title="Log or Edit a Lift">
-              <div className="flex flex-wrap gap-2">
-                <button className="btn" onClick={() => openLiftEditor()}>New Lift</button>
-              </div>
-            </Card>
+            <div className="mb-8">
+              <Card title="Log or Edit a Lift">
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn" onClick={() => openLiftEditor()}>New Lift</button>
+                </div>
+              </Card>
+            </div>
 
-            <Card title="Recent Lifts">
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentLifts.map((l) => (
-                      <tr key={l.id} className="border-t">
-                        <td className="p-2">{new Date(l.logDate).toISOString().slice(0, 10)}</td>
-                        <td className="p-2">{l.dayType}</td>
-                        <td className="p-2">{l.exercise}</td>
-                        <td className="p-2">{l.weight ?? ''}</td>
-                        <td className="p-2">{(l.sets ?? 0)}×{(l.reps ?? 0)}</td>
-                        <td className="p-2">{l.rpe ?? ''}</td>
-                        <td className="p-2 max-w-[280px] truncate sm:whitespace-normal sm:max-w-none">{l.notes ?? ''}</td>
-                        <td className="p-2 whitespace-nowrap">
-                          <button className="btn mr-2" onClick={() => openLiftEditor(l as any)}>Edit</button>
-                          <button className="btn" onClick={() => deleteLift(l.id!)}>Delete</button>
-                        </td>
+            <div className="mt-8">
+              <Card title="Recent Lifts">
+                <div className="overflow-x-auto">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
                       </tr>
-                    ))}
-                    {recentLifts.length === 0 && (
-                      <tr><td colSpan={8} className="p-2 text-sm text-gray-500">No lifts yet.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                    </thead>
+                    <tbody>
+                      {recentLifts.map((l) => (
+                        <tr key={l.id} className="border-t">
+                          <td className="p-2">{new Date(l.logDate).toISOString().slice(0, 10)}</td>
+                          <td className="p-2">{l.dayType}</td>
+                          <td className="p-2">{l.exercise}</td>
+                          <td className="p-2">{l.weight ?? ''}</td>
+                          <td className="p-2">{(l.sets ?? 0)}×{(l.reps ?? 0)}</td>
+                          <td className="p-2">{l.rpe ?? ''}</td>
+                          <td className="p-2 max-w-[280px] truncate sm:whitespace-normal sm:max-w-none">{l.notes ?? ''}</td>
+                          <td className="p-2 whitespace-nowrap">
+                            <button className="btn mr-2" onClick={() => openLiftEditor(l as any)}>Edit</button>
+                            <button className="btn" onClick={() => deleteLift(l.id!)}>Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {recentLifts.length === 0 && (
+                        <tr><td colSpan={8} className="p-2 text-sm text-gray-500">No lifts yet.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
@@ -298,7 +291,7 @@ export default function TodayPage() {
         title={editingRunId ? 'Edit Run' : 'Log Run'}
         maxWidthClass="max-w-2xl"
       >
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 min-w-0">
           <label className="text-sm">
             Date
             <input type="date" className="input" value={run.logDate} onChange={(e) => setRunField('logDate', e.target.value)} />
@@ -339,7 +332,7 @@ export default function TodayPage() {
         title={editingLiftId ? 'Edit Lift' : 'Log Lift'}
         maxWidthClass="max-w-xl"
       >
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 min-w-0">
           <label className="text-sm">
             Date
             <input type="date" className="input" value={lift.logDate} onChange={(e) => setLiftField('logDate', e.target.value)} />
