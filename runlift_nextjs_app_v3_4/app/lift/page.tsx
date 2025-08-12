@@ -31,8 +31,6 @@ function buildWeeks(exs: Ex[], incUpper:number, incLower:number, incAssist:numbe
   return { weeks, rows };
 }
 
-const Fade = ({children}:{children:React.ReactNode}) => (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} transition={{duration:0.25}}>{children}</motion.div>);
-
 export default function LiftPage(){
   const [s, setS] = useState<any>({});
   useEffect(()=>{ getSettings().then(setS); }, []);
