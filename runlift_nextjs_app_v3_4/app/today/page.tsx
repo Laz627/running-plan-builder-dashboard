@@ -1,18 +1,15 @@
-import { motion } from 'framer-motion';
-
 'use client';
-import Fade from '@/components/Fade';
 
-import { useEffect, useMemo, useState } from 'react';
+import Fade from '@/components/Fade';
 import Card from '@/components/Card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs';
-import { Button } from '@/components/Button';
-import { Input } from '@/components/Input';
+import { toast } from '@/components/Toaster';
+import { useEffect, useState } from 'react';
 import { mmssToMin, minToMMSS, heatHumidityFactor, paceBands } from '@/lib/pacing';
 
-const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-function defaultPlan(){ /* same as in plan */ return [
+function defaultPlan(){ return [
   ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 8–10 mi (Easy)','Rest'],
   ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 8–10 mi (Easy)','Rest'],
   ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 9–11 mi (Easy)','Rest'],
@@ -40,9 +37,42 @@ function fueling(desc:string){
 export default function TodayPage(){
   const [settings, setSettings] = useState<any>({});
   const [plan, setPlan] = useState<string[][]>(defaultPlan());
-  const cycle = ['Push','Pull','Legs','Push','Pull','Legs','Rest']; // Sun = Rest
-  const dowIdx = new Date().getDay(); // 0=Sun..6=Sat
-  const liftDay = cycle[dowIdx];
+
+  useEffect(()=>{ 
+    fetch('/api/settings').then(r=>r.json()).then(s=>{
+      setSettings(s);
+      if (s.custom_plan_json) try { setPlan(JSON.parse(s.custom_plan_json)); } catch {}
+    });
+  }, []);
+
+  // Figure out "today" in the user's plan
+  const today = new Date();
+  const dowIdxSun0 = today.getDay(); // 0..6
+  const dayIdx = (dowIdxSun0 + 6) % 7; // Mon=0..Sun=6
+  const start = settings.start_date ? new Date(settings.start_date) : new Date();
+  const diffDays = Math.max(0, Math.floor((+today - +start)/(1000*60*60*24)));
+  const week = Math.min(12, Math.floor(diffDays/7) + 1);
+
+  const desc = plan[week-1]?.[dayIdx] ?? 'Rest';
+  const kind = desc.toLowerCase().includes('tempo') ? 'Tempo' :
+               desc.toLowerCase().includes('mp') ? 'MP' :
+               desc.toLowerCase().includes('recovery') ? 'Recovery' :
+               desc.toLowerCase().includes('easy') ? 'Easy' :
+               (desc.includes('400')||desc.includes('800')) ? 'Speed' : '';
+
+  const base = kind==='Tempo'? mmssToMin(settings.tempo_base||'9:00') :
+               kind==='MP'? mmssToMin(settings.goal_mp||'9:40') :
+               kind==='Recovery'? mmssToMin(settings.recovery_base||'10:35') :
+               kind==='Easy'? mmssToMin(settings.easy_base||'10:30') :
+               kind==='Speed'? mmssToMin(settings.speed_base||'7:55') : null;
+
+  const factor = heatHumidityFactor(parseInt(settings.temp||'80'), parseInt(settings.humidity||'60'));
+  const bands = base ? paceBands(base, kind) : null;
+  const bandsHeat = bands ? bands.map(b=>b*factor) : null;
+
+  // Simple PPL cycle for lift card (Sun=Rest)
+  const cycle = ['Rest','Push','Pull','Legs','Push','Pull','Legs'];
+  const liftDay = cycle[dowIdxSun0];
 
   const exMap:any = {
     Push: [
@@ -62,123 +92,127 @@ export default function TodayPage(){
       { n:'Ab Work (Minor)', s: 0 },
     ]
   };
-    
-
-  useEffect(()=>{ fetch('/api/settings').then(r=>r.json()).then(s=>{
-    setSettings(s);
-    if (s.custom_plan_json) try { setPlan(JSON.parse(s.custom_plan_json)); } catch {}
-  }); }, []);
-
-  const today = new Date();
-  const dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][today.getDay()];
-  const start = settings.start_date ? new Date(settings.start_date) : new Date();
-  const diff = Math.max(0, Math.floor((+today - +start)/(1000*60*60*24)));
-  const week = Math.min(12, Math.floor(diff/7)+1);
-  const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const dayIdx = dayNames.indexOf(dow === 'Sun' ? 'Sun':'Mon') === -1 ? (today.getDay()+6)%7 : (today.getDay()+6)%7;
-  const desc = plan[week-1]?.[dayIdx] ?? 'Rest';
-
-  const kind = desc.toLowerCase().includes('tempo') ? 'Tempo' :
-               desc.toLowerCase().includes('mp') ? 'MP' :
-               desc.toLowerCase().includes('recovery') ? 'Recovery' :
-               desc.toLowerCase().includes('easy') ? 'Easy' :
-               (desc.includes('400')||desc.includes('800')) ? 'Speed' : '';
-
-  const base = kind==='Tempo'? mmssToMin(settings.tempo_base||'9:00') :
-               kind==='MP'? mmssToMin(settings.goal_mp||'9:40') :
-               kind==='Recovery'? mmssToMin(settings.recovery_base||'10:35') :
-               kind==='Easy'? mmssToMin(settings.easy_base||'10:30') :
-               kind==='Speed'? mmssToMin(settings.speed_base||'7:55') : null;
-
-  const factor = heatHumidityFactor(parseInt(settings.temp||'80'), parseInt(settings.humidity||'60'));
-
-  const bands = base ? paceBands(base, kind) : null;
-  const bandsHeat = bands ? bands.map(b=>b*factor) : null;
 
   return (
     <Fade>
       <div className="grid gap-4">
-      <Tabs defaultValue="run">
-        <TabsList>
-          <TabsTrigger value="run">Run</TabsTrigger>
-          <TabsTrigger value="lift">Lift</TabsTrigger>
-        </TabsList>
-      <TabsContent value="run">
-      <Card title="Planned Run">
-        <p className="text-sm text-gray-600 mb-2">Week {week} • {dayNames[dayIdx]}</p>
-        <p className="font-medium">{desc}</p>
-        {bands && bandsHeat && (
-          <div className="mt-3 space-y-1">
-            <div>Cool Bands: <span className="pill">{[...bands].map(b=>minToMMSS(b)).join(' · ')}</span></div>
-            <div>Heat Bands: <span className="pill">{[...bandsHeat].map(b=>minToMMSS(b)).join(' · ')}</span></div>
-          </div>
-        )}
-        <div className="mt-3 text-sm">Fueling: {fueling(desc)}</div>
-      </Card>
-      </TabsContent>
-      </TabsContent>
-      <Card title="Quick Log">
-        <form onSubmit={async (e)=>{
-          e.preventDefault();
-          const form = new FormData(e.currentTarget as HTMLFormElement);
-          await fetch('/api/logs/run',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-            logDate: new Date().toISOString(),
-            runType: kind, plannedDesc: desc,
-            targetPaceCool: bands?minToMMSS(bands[1]):'',
-            targetPaceHeat: bandsHeat?minToMMSS(bandsHeat[1]):'',
-            actualDistance: parseFloat(form.get('dist') as string || '0'),
-            actualPace: form.get('pace'),
-            rpe: parseInt(form.get('rpe') as string || '7'),
-            notes: form.get('notes')
-          })});
-          toast({ title: 'Run logged', description: 'Nice work—your run was saved.' });
-        }} className="grid grid-cols-2 gap-3">
-          <label className="text-sm">Distance (mi)<input name="dist" className="input" placeholder="0.0"/></label>
-          <label className="text-sm">Actual Pace (mm:ss)<input name="pace" className="input" placeholder="10:00"/></label>
-          <label className="text-sm col-span-2">RPE (1–10)<input name="rpe" className="input" defaultValue="7"/></label>
-          <label className="text-sm col-span-2">Notes<textarea name="notes" className="input" rows={3}/></label>
-          <div className="col-span-2 flex justify-end"><button className="btn">Save</button></div>
-        </form>
-      </Card>
+        <Tabs defaultValue="run">
+          <TabsList>
+            <TabsTrigger value="run">Run</TabsTrigger>
+            <TabsTrigger value="lift">Lift</TabsTrigger>
+          </TabsList>
 
-  <TabsContent value="lift">
-      <Card title={`Planned Lift — ${liftDay}`}>
-    {liftDay === 'Rest' ? (
-      <p>Rest / mobility.</p>
-    ) : (
-      <ul className="list-disc pl-6">
-        {exMap[liftDay].map((e:any, idx:number)=> (
-          <li key={idx}>{e.n}: <strong>{e.s || '-'} lb</strong> (3×8){e.assist?' — assistance weight':''}</li>
-        ))}
-      </ul>
-    )}
-    <div className="mt-3">
-      <form onSubmit={async (e)=>{
-        e.preventDefault();
-        const form = new FormData(e.currentTarget as HTMLFormElement);
-        await fetch('/api/logs/lift',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-          logDate: new Date().toISOString(),
-          dayType: liftDay,
-          exercise: form.get('exercise'),
-          weight: parseFloat(form.get('weight') as string || '0'),
-          sets: 3, reps: 8,
-          rpe: parseInt(form.get('rpe') as string || '7'),
-          notes: form.get('notes')
-        })});
-        toast({ title: 'Lift logged', description: 'Session saved to your history.' });
-      }} className="grid grid-cols-2 gap-3">
-        <label className="text-sm col-span-2">Exercise
-          <input name="exercise" className="input" placeholder="e.g., Leg Press"/>
-        </label>
-        <label className="text-sm">Weight (lb)<input name="weight" className="input" placeholder="0"/></label>
-        <label className="text-sm">RPE (1–10)<input name="rpe" className="input" defaultValue="7"/></label>
-        <label className="text-sm col-span-2">Notes<textarea name="notes" className="input" rows={3}/></label>
-        <div className="col-span-2 flex justify-end"><button className="btn">Save</button></div>
-      </form>
-    </div>
-  </Card>
-      </TabsContent>
-    
-    </div>
+          <TabsContent value="run">
+            <Card title="Planned Run">
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+                Week {week} • {dayNames[dayIdx]}
+              </p>
+              <p className="font-medium">{desc}</p>
+              {bands && bandsHeat ? (
+                <div className="mt-3 space-y-1">
+                  <div>Cool Bands: <span className="pill">{[...bands].map(b=>minToMMSS(b)).join(' · ')}</span></div>
+                  <div>Heat Bands: <span className="pill">{[...bandsHeat].map(b=>minToMMSS(b)).join(' · ')}</span></div>
+                </div>
+              ) : (
+                <div className="mt-3 text-sm">Rest day. Consider mobility.</div>
+              )}
+              <div className="mt-3 text-sm">Fueling: {fueling(desc)}</div>
+
+              {bands && bandsHeat && (
+                <form
+                  onSubmit={async (e)=>{
+                    e.preventDefault();
+                    const form = new FormData(e.currentTarget as HTMLFormElement);
+                    await fetch('/api/logs/run',{
+                      method:'POST', headers:{'Content-Type':'application/json'},
+                      body: JSON.stringify({
+                        logDate: new Date().toISOString(),
+                        runType: kind, plannedDesc: desc,
+                        targetPaceCool: minToMMSS(bands[1]),
+                        targetPaceHeat: minToMMSS(bandsHeat[1]),
+                        actualDistance: parseFloat(String(form.get('dist')||'0')),
+                        actualPace: form.get('pace'),
+                        rpe: parseInt(String(form.get('rpe')||'7')),
+                        notes: form.get('notes')
+                      })
+                    });
+                    toast({ title: 'Run logged', description: 'Nice work—your run was saved.' });
+                    (e.target as HTMLFormElement).reset();
+                  }}
+                  className="grid grid-cols-2 gap-3 mt-4"
+                >
+                  <label className="text-sm">Distance (mi)
+                    <input name="dist" className="input" placeholder="0.0" />
+                  </label>
+                  <label className="text-sm">Actual Pace (mm:ss)
+                    <input name="pace" className="input" placeholder="10:00" />
+                  </label>
+                  <label className="text-sm col-span-2">RPE (1–10)
+                    <input name="rpe" className="input" defaultValue="7" />
+                  </label>
+                  <label className="text-sm col-span-2">Notes
+                    <textarea name="notes" className="input" rows={3} />
+                  </label>
+                  <div className="col-span-2 flex justify-end">
+                    <button className="btn">Save</button>
+                  </div>
+                </form>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="lift">
+            <Card title={`Planned Lift — ${liftDay}`}>
+              {liftDay === 'Rest' ? (
+                <p>Rest / mobility.</p>
+              ) : (
+                <ul className="list-disc pl-6">
+                  {exMap[liftDay].map((e:any, idx:number)=> (
+                    <li key={idx}>{e.n}: <strong>{e.s || '-'} lb</strong> (3×8){e.assist?' — assistance weight':''}</li>
+                  ))}
+                </ul>
+              )}
+              <form
+                onSubmit={async (e)=>{
+                  e.preventDefault();
+                  const form = new FormData(e.currentTarget as HTMLFormElement);
+                  await fetch('/api/logs/lift',{
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                      logDate: new Date().toISOString(),
+                      dayType: liftDay,
+                      exercise: form.get('exercise'),
+                      weight: parseFloat(String(form.get('weight')||'0')),
+                      sets: 3, reps: 8,
+                      rpe: parseInt(String(form.get('rpe')||'7')),
+                      notes: form.get('notes')
+                    })
+                  });
+                  toast({ title: 'Lift logged', description: 'Session saved to your history.' });
+                  (e.target as HTMLFormElement).reset();
+                }}
+                className="grid grid-cols-2 gap-3 mt-4"
+              >
+                <label className="text-sm col-span-2">Exercise
+                  <input name="exercise" className="input" placeholder="e.g., Leg Press" />
+                </label>
+                <label className="text-sm">Weight (lb)
+                  <input name="weight" className="input" placeholder="0" />
+                </label>
+                <label className="text-sm">RPE (1–10)
+                  <input name="rpe" className="input" defaultValue="7" />
+                </label>
+                <label className="text-sm col-span-2">Notes
+                  <textarea name="notes" className="input" rows={3} />
+                </label>
+                <div className="col-span-2 flex justify-end">
+                  <button className="btn">Save</button>
+                </div>
+              </form>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </Fade>
   );
 }
