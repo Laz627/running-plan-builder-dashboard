@@ -3,95 +3,173 @@
 import Fade from '@/components/Fade';
 import Card from '@/components/Card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from '@/components/Toaster';
-import { useEffect, useState } from 'react';
-import { mmssToMin, minToMMSS, heatHumidityFactor, paceBands } from '@/lib/pacing';
+import { LIFT_EXERCISES, RUN_TYPES } from '@/lib/exercises';
 
-const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+type RunLog = {
+  id?: number;
+  logDate: string;
+  runType?: string | null;
+  plannedDesc?: string | null;
+  targetPaceCool?: string | null;
+  targetPaceHeat?: string | null;
+  actualDistance?: number | null;
+  actualPace?: string | null;
+  rpe?: number | null;
+  notes?: string | null;
+};
 
-function defaultPlan(){ return [
-  ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 8–10 mi (Easy)','Rest'],
-  ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 8–10 mi (Easy)','Rest'],
-  ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 9–11 mi (Easy)','Rest'],
-  ['ER 5 mi (Easy)','TR 5–6 mi (Tempo)','MR 6–7 mi (Easy)','SR 5 mi (8×400m)','ER 5 mi (Easy)','LR 10 mi (Easy)','Rest'],
-  ['ER 5 mi (Easy)','TR 7 mi (Tempo)','MR 8 mi (Last 2 @ MP)','SR 6 mi (6×800m)','ER 5 mi (Easy)','LR 12 mi (Last 3 @ MP)','Rest'],
-  ['ER 5 mi (Easy)','TR 7 mi (Tempo)','MR 8 mi (Last 2 @ MP)','SR 6 mi (6×800m)','ER 5 mi (Easy)','LR 13 mi (Last 3 @ MP)','Rest'],
-  ['ER 5 mi (Easy)','TR 7 mi (Tempo)','MR 8 mi (Last 2 @ MP)','SR 6 mi (6×800m)','ER 5 mi (Easy)','LR 14 mi (Last 3 @ MP)','Rest'],
-  ['ER 5 mi (Easy)','TR 7 mi (Tempo)','MR 8 mi (Last 2 @ MP)','SR 6 mi (6×800m)','ER 5 mi (Easy)','LR 15 mi (Last 3 @ MP)','Rest'],
-  ['ER 5 mi (Easy)','TR 8 mi (Tempo)','MR 9 mi (Last 3 @ MP)','SR 6 mi (10×400m)','ER 5 mi (Easy)','LR 18 mi (Last 4 @ MP)','Rest'],
-  ['ER 5 mi (Easy)','TR 8 mi (Tempo)','MR 9 mi (Last 3 @ MP)','SR 6 mi (10×400m)','ER 5 mi (Easy)','LR 20 mi (Last 4 @ MP)','Rest'],
-  ['ER 4 mi (Easy)','TR 5 mi (Tempo)','MR 6 mi (Easy)','SR 4 mi (6×400m)','ER 4 mi (Easy)','LR 10–12 mi (Easy)','Rest'],
-  ['ER 4 mi (Easy)','TR 5 mi (Tempo)','MR 6 mi (Easy)','SR 4 mi (6×400m)','ER 4 mi (Easy)','LR 6 mi (Easy)','Rest'],
-]; }
+type LiftLog = {
+  id?: number;
+  logDate: string;
+  dayType?: string | null;
+  exercise?: string | null;
+  weight?: number | null;
+  sets?: number | null;
+  reps?: number | null;
+  rpe?: number | null;
+  notes?: string | null;
+};
 
-function fueling(desc:string){
-  const m = desc.match(/\d+/);
-  if(!m) return 'Rest day';
-  const miles = parseInt(m[0]);
-  if (miles < 5) return 'Pre: 12 oz water; no fuel needed';
-  if (miles <= 8) return 'Pre: 12–16 oz water; 20g carbs pre; Hydrate if >70°F';
-  if (miles <= 12) return 'Pre: 12–16 oz + electrolytes; 20–30g carbs pre; 3–5 oz water q20m; 20g carbs halfway';
-  return 'Pre: 12–16 oz + electrolytes; 30–40g carbs pre; 3–5 oz water q15–20m; 20–30g carbs q30–40m';
+function isoToday() {
+  const d = new Date();
+  return d.toISOString().slice(0,10);
 }
 
-export default function TodayPage(){
-  const [settings, setSettings] = useState<any>({});
-  const [plan, setPlan] = useState<string[][]>(defaultPlan());
+export default function TodayPage() {
+  // RUN form
+  const [run, setRun] = useState<RunLog>({
+    logDate: isoToday(),
+    runType: 'Easy',
+    actualDistance: 0,
+    actualPace: '',
+    rpe: 7,
+    notes: ''
+  });
+  const [recentRuns, setRecentRuns] = useState<RunLog[]>([]);
+  const [editingRunId, setEditingRunId] = useState<number | null>(null);
 
-  useEffect(()=>{ 
-    fetch('/api/settings').then(r=>r.json()).then(s=>{
-      setSettings(s);
-      if (s.custom_plan_json) try { setPlan(JSON.parse(s.custom_plan_json)); } catch {}
+  // LIFT form
+  const [lift, setLift] = useState<LiftLog>({
+    logDate: isoToday(),
+    dayType: 'Push',
+    exercise: LIFT_EXERCISES[0],
+    weight: 0,
+    sets: 3,
+    reps: 8,
+    rpe: 7,
+    notes: ''
+  });
+  const [recentLifts, setRecentLifts] = useState<LiftLog[]>([]);
+  const [editingLiftId, setEditingLiftId] = useState<number | null>(null);
+
+  async function loadRecent() {
+    const r = await fetch('/api/logs/history?type=all&limit=20').then(r=>r.json());
+    setRecentRuns(r.runs || []);
+    setRecentLifts(r.lifts || []);
+  }
+
+  useEffect(()=>{ loadRecent(); }, []);
+
+  // --------- RUN handlers ----------
+  function setRunField<K extends keyof RunLog>(k: K, v: any) {
+    setRun((f)=> ({ ...f, [k]: v }));
+  }
+
+  async function saveRun() {
+    const method = editingRunId ? 'PUT' : 'POST';
+    const url = editingRunId ? `/api/logs/run/${editingRunId}` : '/api/logs/run';
+    const ok = await fetch(url, {
+      method,
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(run)
+    }).then(r=>r.ok).catch(()=>false);
+    if (ok) {
+      toast({ title: editingRunId ? 'Run updated' : 'Run saved', description: 'Entry stored successfully.' });
+      setEditingRunId(null);
+      setRun({ logDate: isoToday(), runType:'Easy', actualDistance:0, actualPace:'', rpe:7, notes:'' });
+      loadRecent();
+    } else {
+      toast({ title:'Error', description:'Could not save run.' });
+    }
+  }
+
+  function editRun(entry: RunLog) {
+    setEditingRunId(entry.id!);
+    setRun({
+      logDate: entry.logDate?.slice(0,10) || isoToday(),
+      runType: entry.runType || 'Easy',
+      plannedDesc: entry.plannedDesc || '',
+      targetPaceCool: entry.targetPaceCool || '',
+      targetPaceHeat: entry.targetPaceHeat || '',
+      actualDistance: entry.actualDistance ?? 0,
+      actualPace: entry.actualPace || '',
+      rpe: entry.rpe ?? 7,
+      notes: entry.notes || '',
     });
-  }, []);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
-  // Figure out "today" in the user's plan
-  const today = new Date();
-  const dowIdxSun0 = today.getDay(); // 0..6
-  const dayIdx = (dowIdxSun0 + 6) % 7; // Mon=0..Sun=6
-  const start = settings.start_date ? new Date(settings.start_date) : new Date();
-  const diffDays = Math.max(0, Math.floor((+today - +start)/(1000*60*60*24)));
-  const week = Math.min(12, Math.floor(diffDays/7) + 1);
+  async function deleteRun(id: number) {
+    const ok = await fetch(`/api/logs/run/${id}`, { method:'DELETE' }).then(r=>r.ok).catch(()=>false);
+    if (ok) {
+      toast({ title:'Run deleted', description:'Entry removed.' });
+      if (editingRunId === id) setEditingRunId(null);
+      loadRecent();
+    } else {
+      toast({ title:'Error', description:'Could not delete run.' });
+    }
+  }
 
-  const desc = plan[week-1]?.[dayIdx] ?? 'Rest';
-  const kind = desc.toLowerCase().includes('tempo') ? 'Tempo' :
-               desc.toLowerCase().includes('mp') ? 'MP' :
-               desc.toLowerCase().includes('recovery') ? 'Recovery' :
-               desc.toLowerCase().includes('easy') ? 'Easy' :
-               (desc.includes('400')||desc.includes('800')) ? 'Speed' : '';
+  // --------- LIFT handlers ----------
+  function setLiftField<K extends keyof LiftLog>(k: K, v: any) {
+    setLift((f)=> ({ ...f, [k]: v }));
+  }
 
-  const base = kind==='Tempo'? mmssToMin(settings.tempo_base||'9:00') :
-               kind==='MP'? mmssToMin(settings.goal_mp||'9:40') :
-               kind==='Recovery'? mmssToMin(settings.recovery_base||'10:35') :
-               kind==='Easy'? mmssToMin(settings.easy_base||'10:30') :
-               kind==='Speed'? mmssToMin(settings.speed_base||'7:55') : null;
+  async function saveLift() {
+    const method = editingLiftId ? 'PUT' : 'POST';
+    const url = editingLiftId ? `/api/logs/lift/${editingLiftId}` : '/api/logs/lift';
+    const ok = await fetch(url, {
+      method,
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(lift)
+    }).then(r=>r.ok).catch(()=>false);
+    if (ok) {
+      toast({ title: editingLiftId ? 'Lift updated' : 'Lift saved', description: 'Entry stored successfully.' });
+      setEditingLiftId(null);
+      setLift({ logDate: isoToday(), dayType:'Push', exercise:LIFT_EXERCISES[0], weight:0, sets:3, reps:8, rpe:7, notes:'' });
+      loadRecent();
+    } else {
+      toast({ title:'Error', description:'Could not save lift.' });
+    }
+  }
 
-  const factor = heatHumidityFactor(parseInt(settings.temp||'80'), parseInt(settings.humidity||'60'));
-  const bands = base ? paceBands(base, kind) : null;
-  const bandsHeat = bands ? bands.map(b=>b*factor) : null;
+  function editLift(entry: LiftLog) {
+    setEditingLiftId(entry.id!);
+    setLift({
+      logDate: entry.logDate?.slice(0,10) || isoToday(),
+      dayType: entry.dayType || 'Push',
+      exercise: entry.exercise || LIFT_EXERCISES[0],
+      weight: entry.weight ?? 0,
+      sets: entry.sets ?? 3,
+      reps: entry.reps ?? 8,
+      rpe: entry.rpe ?? 7,
+      notes: entry.notes || '',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
-  // Simple PPL cycle for lift card (Sun=Rest)
-  const cycle = ['Rest','Push','Pull','Legs','Push','Pull','Legs'];
-  const liftDay = cycle[dowIdxSun0];
-
-  const exMap:any = {
-    Push: [
-      { n:'Incline Chest Press (Machine)', s: parseFloat(settings.start_incline||'35') },
-      { n:'Shoulder Press (Machine)', s: parseFloat(settings.start_shoulder||'35') },
-      { n:'Assisted Chest Dips', s: parseFloat(settings.start_dips||'60'), assist:true },
-    ],
-    Pull: [
-      { n:'Seated Rows (Machine)', s: parseFloat(settings.start_rows||'90') },
-      { n:'Assisted Pull-ups/Chin-ups', s: parseFloat(settings.start_pu||'60'), assist:true },
-      { n:'Lat Pulldowns (Machine)', s: parseFloat(settings.start_lat||'75') },
-    ],
-    Legs: [
-      { n:'Leg Press (Machine)', s: parseFloat(settings.start_legpress||'160') },
-      { n:'Hamstring Curl (Machine)', s: parseFloat(settings.start_ham||'60') },
-      { n:'Calf Raises (Machine)', s: parseFloat(settings.start_calf||'45') },
-      { n:'Ab Work (Minor)', s: 0 },
-    ]
-  };
+  async function deleteLift(id: number) {
+    const ok = await fetch(`/api/logs/lift/${id}`, { method:'DELETE' }).then(r=>r.ok).catch(()=>false);
+    if (ok) {
+      toast({ title:'Lift deleted', description:'Entry removed.' });
+      if (editingLiftId === id) setEditingLiftId(null);
+      loadRecent();
+    } else {
+      toast({ title:'Error', description:'Could not delete lift.' });
+    }
+  }
 
   return (
     <Fade>
@@ -102,113 +180,148 @@ export default function TodayPage(){
             <TabsTrigger value="lift">Lift</TabsTrigger>
           </TabsList>
 
+          {/* RUN TAB */}
           <TabsContent value="run">
-            <Card title="Planned Run">
-              <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-                Week {week} • {dayNames[dayIdx]}
-              </p>
-              <p className="font-medium">{desc}</p>
-              {bands && bandsHeat ? (
-                <div className="mt-3 space-y-1">
-                  <div>Cool Bands: <span className="pill">{[...bands].map(b=>minToMMSS(b)).join(' · ')}</span></div>
-                  <div>Heat Bands: <span className="pill">{[...bandsHeat].map(b=>minToMMSS(b)).join(' · ')}</span></div>
-                </div>
-              ) : (
-                <div className="mt-3 text-sm">Rest day. Consider mobility.</div>
-              )}
-              <div className="mt-3 text-sm">Fueling: {fueling(desc)}</div>
+            <Card title={editingRunId ? 'Edit Run' : 'Log Run'}>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <label className="text-sm">
+                  Date
+                  <input type="date" className="input" value={run.logDate} onChange={e=>setRunField('logDate', e.target.value)} />
+                </label>
+                <label className="text-sm">
+                  Type
+                  <select className="input" value={run.runType || 'Easy'} onChange={e=>setRunField('runType', e.target.value)}>
+                    {RUN_TYPES.map(t=> <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+                <label className="text-sm">
+                  Distance (mi)
+                  <input className="input" type="number" step="0.01" value={run.actualDistance ?? 0} onChange={e=>setRunField('actualDistance', parseFloat(e.target.value))}/>
+                </label>
+                <label className="text-sm">
+                  Pace (mm:ss)
+                  <input className="input" value={run.actualPace || ''} onChange={e=>setRunField('actualPace', e.target.value)}/>
+                </label>
+                <label className="text-sm">
+                  RPE (1–10)
+                  <input className="input" type="number" min={1} max={10} value={run.rpe ?? 7} onChange={e=>setRunField('rpe', parseInt(e.target.value || '7', 10))}/>
+                </label>
+                <label className="text-sm sm:col-span-3">
+                  Notes
+                  <textarea className="input" rows={2} value={run.notes || ''} onChange={e=>setRunField('notes', e.target.value)}/>
+                </label>
+              </div>
+              <div className="mt-3 flex gap-2 justify-end">
+                {editingRunId && (
+                  <button className="btn" onClick={()=>{ setEditingRunId(null); setRun({ logDate: isoToday(), runType:'Easy', actualDistance:0, actualPace:'', rpe:7, notes:'' }); }}>
+                    Cancel
+                  </button>
+                )}
+                <button className="btn" onClick={saveRun}>{editingRunId ? 'Update' : 'Save'}</button>
+              </div>
+            </Card>
 
-              {bands && bandsHeat && (
-                <form
-                  onSubmit={async (e)=>{
-                    e.preventDefault();
-                    const form = new FormData(e.currentTarget as HTMLFormElement);
-                    await fetch('/api/logs/run',{
-                      method:'POST', headers:{'Content-Type':'application/json'},
-                      body: JSON.stringify({
-                        logDate: new Date().toISOString(),
-                        runType: kind, plannedDesc: desc,
-                        targetPaceCool: minToMMSS(bands[1]),
-                        targetPaceHeat: minToMMSS(bandsHeat[1]),
-                        actualDistance: parseFloat(String(form.get('dist')||'0')),
-                        actualPace: form.get('pace'),
-                        rpe: parseInt(String(form.get('rpe')||'7')),
-                        notes: form.get('notes')
-                      })
-                    });
-                    toast({ title: 'Run logged', description: 'Nice work—your run was saved.' });
-                    (e.target as HTMLFormElement).reset();
-                  }}
-                  className="grid grid-cols-2 gap-3 mt-4"
-                >
-                  <label className="text-sm">Distance (mi)
-                    <input name="dist" className="input" placeholder="0.0" />
-                  </label>
-                  <label className="text-sm">Actual Pace (mm:ss)
-                    <input name="pace" className="input" placeholder="10:00" />
-                  </label>
-                  <label className="text-sm col-span-2">RPE (1–10)
-                    <input name="rpe" className="input" defaultValue="7" />
-                  </label>
-                  <label className="text-sm col-span-2">Notes
-                    <textarea name="notes" className="input" rows={3} />
-                  </label>
-                  <div className="col-span-2 flex justify-end">
-                    <button className="btn">Save</button>
-                  </div>
-                </form>
-              )}
+            <Card title="Recent Runs">
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead><tr><th>Date</th><th>Type</th><th>Mi</th><th>Pace</th><th>RPE</th><th>Notes</th><th></th></tr></thead>
+                  <tbody>
+                    {recentRuns.map(r=>(
+                      <tr key={r.id} className="border-t">
+                        <td className="p-2">{new Date(r.logDate).toISOString().slice(0,10)}</td>
+                        <td className="p-2">{r.runType}</td>
+                        <td className="p-2">{r.actualDistance ?? ''}</td>
+                        <td className="p-2">{r.actualPace ?? ''}</td>
+                        <td className="p-2">{r.rpe ?? ''}</td>
+                        <td className="p-2">{r.notes ?? ''}</td>
+                        <td className="p-2 whitespace-nowrap">
+                          <button className="btn mr-2" onClick={()=>editRun(r as any)}>Edit</button>
+                          <button className="btn" onClick={()=>deleteRun(r.id!)}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {recentRuns.length === 0 && <tr><td colSpan={7} className="p-2 text-sm text-gray-500">No runs yet.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           </TabsContent>
 
+          {/* LIFT TAB */}
           <TabsContent value="lift">
-            <Card title={`Planned Lift — ${liftDay}`}>
-              {liftDay === 'Rest' ? (
-                <p>Rest / mobility.</p>
-              ) : (
-                <ul className="list-disc pl-6">
-                  {exMap[liftDay].map((e:any, idx:number)=> (
-                    <li key={idx}>{e.n}: <strong>{e.s || '-'} lb</strong> (3×8){e.assist?' — assistance weight':''}</li>
-                  ))}
-                </ul>
-              )}
-              <form
-                onSubmit={async (e)=>{
-                  e.preventDefault();
-                  const form = new FormData(e.currentTarget as HTMLFormElement);
-                  await fetch('/api/logs/lift',{
-                    method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({
-                      logDate: new Date().toISOString(),
-                      dayType: liftDay,
-                      exercise: form.get('exercise'),
-                      weight: parseFloat(String(form.get('weight')||'0')),
-                      sets: 3, reps: 8,
-                      rpe: parseInt(String(form.get('rpe')||'7')),
-                      notes: form.get('notes')
-                    })
-                  });
-                  toast({ title: 'Lift logged', description: 'Session saved to your history.' });
-                  (e.target as HTMLFormElement).reset();
-                }}
-                className="grid grid-cols-2 gap-3 mt-4"
-              >
-                <label className="text-sm col-span-2">Exercise
-                  <input name="exercise" className="input" placeholder="e.g., Leg Press" />
+            <Card title={editingLiftId ? 'Edit Lift' : 'Log Lift'}>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <label className="text-sm">
+                  Date
+                  <input type="date" className="input" value={lift.logDate} onChange={(e)=>setLiftField('logDate', e.target.value)} />
                 </label>
-                <label className="text-sm">Weight (lb)
-                  <input name="weight" className="input" placeholder="0" />
+                <label className="text-sm">
+                  Day
+                  <select className="input" value={lift.dayType || 'Push'} onChange={(e)=>setLiftField('dayType', e.target.value)}>
+                    <option>Push</option><option>Pull</option><option>Legs</option>
+                  </select>
                 </label>
-                <label className="text-sm">RPE (1–10)
-                  <input name="rpe" className="input" defaultValue="7" />
+                <label className="text-sm">
+                  Exercise
+                  <select className="input" value={lift.exercise || LIFT_EXERCISES[0]} onChange={(e)=>setLiftField('exercise', e.target.value)}>
+                    {LIFT_EXERCISES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+                  </select>
                 </label>
-                <label className="text-sm col-span-2">Notes
-                  <textarea name="notes" className="input" rows={3} />
+                <label className="text-sm">
+                  Weight (lb) / Assist
+                  <input type="number" className="input" value={lift.weight ?? 0} onChange={(e)=>setLiftField('weight', parseFloat(e.target.value || '0'))}/>
                 </label>
-                <div className="col-span-2 flex justify-end">
-                  <button className="btn">Save</button>
-                </div>
-              </form>
+                <label className="text-sm">
+                  Sets
+                  <input type="number" className="input" value={lift.sets ?? 3} onChange={(e)=>setLiftField('sets', parseInt(e.target.value || '3', 10))}/>
+                </label>
+                <label className="text-sm">
+                  Reps
+                  <input type="number" className="input" value={lift.reps ?? 8} onChange={(e)=>setLiftField('reps', parseInt(e.target.value || '8', 10))}/>
+                </label>
+                <label className="text-sm">
+                  RPE (1–10)
+                  <input type="number" className="input" min={1} max={10} value={lift.rpe ?? 7} onChange={(e)=>setLiftField('rpe', parseInt(e.target.value || '7', 10))}/>
+                </label>
+                <label className="text-sm sm:col-span-3">
+                  Notes
+                  <textarea className="input" rows={2} value={lift.notes || ''} onChange={(e)=>setLiftField('notes', e.target.value)}/>
+                </label>
+              </div>
+              <div className="mt-3 flex gap-2 justify-end">
+                {editingLiftId && (
+                  <button className="btn" onClick={()=>{ setEditingLiftId(null); setLift({ logDate: isoToday(), dayType:'Push', exercise:LIFT_EXERCISES[0], weight:0, sets:3, reps:8, rpe:7, notes:'' }); }}>
+                    Cancel
+                  </button>
+                )}
+                <button className="btn" onClick={saveLift}>{editingLiftId ? 'Update' : 'Save'}</button>
+              </div>
+            </Card>
+
+            <Card title="Recent Lifts">
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead><tr><th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th><th></th></tr></thead>
+                  <tbody>
+                    {recentLifts.map(l=>(
+                      <tr key={l.id} className="border-t">
+                        <td className="p-2">{new Date(l.logDate).toISOString().slice(0,10)}</td>
+                        <td className="p-2">{l.dayType}</td>
+                        <td className="p-2">{l.exercise}</td>
+                        <td className="p-2">{l.weight ?? ''}</td>
+                        <td className="p-2">{(l.sets ?? 0)}×{(l.reps ?? 0)}</td>
+                        <td className="p-2">{l.rpe ?? ''}</td>
+                        <td className="p-2">{l.notes ?? ''}</td>
+                        <td className="p-2 whitespace-nowrap">
+                          <button className="btn mr-2" onClick={()=>editLift(l as any)}>Edit</button>
+                          <button className="btn" onClick={()=>deleteLift(l.id!)}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {recentLifts.length === 0 && <tr><td colSpan={8} className="p-2 text-sm text-gray-500">No lifts yet.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
             </Card>
           </TabsContent>
         </Tabs>
