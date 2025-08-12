@@ -28,4 +28,8 @@
   "engines": {
     "node": "18.x"
   }
+},
+"devDependencies": {
+  "@types/node": "18.x",
+  "@types/react": "18.x"
 }
