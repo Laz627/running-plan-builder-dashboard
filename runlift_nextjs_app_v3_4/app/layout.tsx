@@ -24,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#0a0a0a" />
       </head>
-      <body className="min-h-screen bg-[rgb(var(--bg))] text-[rgb(var(--fg))]">
+      <body className="min-h-screen overflow-x-hidden bg-[rgb(var(--bg))] text-[rgb(var(--fg))]">
         <Providers>
           {/* FULL-BLEED HEADER */}
           <header className="sticky top-0 z-40 bg-white/92 dark:bg-[rgb(var(--card))]/92 backdrop-blur border-b border-gray-200 dark:border-gray-800">
