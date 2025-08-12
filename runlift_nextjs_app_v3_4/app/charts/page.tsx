@@ -35,8 +35,6 @@ function miles(desc: string){
   return parseFloat(nums[0]);
 }
 
-const Fade = ({children}:{children:React.ReactNode}) => (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} transition={{duration:0.25}}>{children}</motion.div>);
-
 export default function ChartsPage(){
   const [plan, setPlan] = useState<string[][]>(defaultPlan());
   useEffect(()=>{ fetch('/api/settings').then(r=>r.json()).then(s=>{
