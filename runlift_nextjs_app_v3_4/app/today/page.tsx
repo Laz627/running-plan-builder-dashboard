@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 
 'use client';
+import Fade from '@/components/Fade';
 
 import { useEffect, useMemo, useState } from 'react';
 import Card from '@/components/Card';
@@ -8,7 +9,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { mmssToMin, minToMMSS, heatHumidityFactor, paceBands } from '@/lib/pacing';
-import Fade from '@/components/Fade';
 
 const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
