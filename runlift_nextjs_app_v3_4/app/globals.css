@@ -43,3 +43,12 @@ body { background-color: rgb(var(--bg)); color: rgb(var(--fg)); }
   padding-left: max(16px, env(safe-area-inset-left));
   padding-right: max(16px, env(safe-area-inset-right));
 }
+
+/* Inputs stretch properly on small screens */
+.input { width: 100%; }
+
+/* Make tables not force zooming */
+.table { width: 100%; table-layout: auto; }
+
+/* iOS tap highlight subtle */
+* { -webkit-tap-highlight-color: transparent; }
