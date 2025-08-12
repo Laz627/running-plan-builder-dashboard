@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import Card from '@/components/Card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import Fade from '@/components/Fade';
 
 const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
