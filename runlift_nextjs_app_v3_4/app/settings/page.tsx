@@ -1,11 +1,11 @@
 import { motion } from 'framer-motion';
 
 'use client';
+import Fade from '@/components/Fade';
 
 import { useEffect, useState } from 'react';
 import Card from '@/components/Card';
 import { toast } from '@/components/Toaster';
-import Fade from '@/components/Fade';
 
 export default function SettingsPage(){
   const [form, setForm] = useState<any>({
