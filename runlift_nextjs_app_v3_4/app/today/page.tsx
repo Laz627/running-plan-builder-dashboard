@@ -4,7 +4,7 @@ import Fade from '@/components/Fade';
 import Card from '@/components/Card';
 import Modal from '@/components/Modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from '@/components/Toaster';
 import { LIFT_EXERCISES, RUN_TYPES } from '@/lib/exercises';
 
@@ -39,11 +39,18 @@ function isoToday() {
 }
 
 export default function TodayPage() {
-  // ---------- state ----------
+  // ---------- recent lists ----------
   const [recentRuns, setRecentRuns] = useState<RunLog[]>([]);
   const [recentLifts, setRecentLifts] = useState<LiftLog[]>([]);
 
-  // run modal
+  async function loadRecent() {
+    const r = await fetch('/api/logs/history?type=all&limit=30').then((r) => r.json());
+    setRecentRuns(r.runs || []);
+    setRecentLifts(r.lifts || []);
+  }
+  useEffect(() => { loadRecent(); }, []);
+
+  // ---------- RUN modal ----------
   const [runOpen, setRunOpen] = useState(false);
   const [editingRunId, setEditingRunId] = useState<number | null>(null);
   const [run, setRun] = useState<RunLog>({
@@ -55,66 +62,13 @@ export default function TodayPage() {
     notes: '',
   });
 
-  // lift modal
-  const [liftOpen, setLiftOpen] = useState(false);
-  const [editingLiftId, setEditingLiftId] = useState<number | null>(null);
-  const [lift, setLift] = useState<LiftLog>({
-    logDate: isoToday(),
-    dayType: 'Push',
-    exercise: LIFT_EXERCISES[0],
-    weight: 0,
-    sets: 3,
-    reps: 8,
-    rpe: 7,
-    notes: '',
-  });
-
-  // ---------- load recent ----------
-  async function loadRecent() {
-    const r = await fetch('/api/logs/history?type=all&limit=30').then((r) => r.json());
-    setRecentRuns(r.runs || []);
-    setRecentLifts(r.lifts || []);
-  }
-  useEffect(() => {
-    loadRecent();
-  }, []);
-
-  // Open in edit mode from query params (?editRunId= / ?editLiftId=)
-  useEffect(() => {
-    const u = new URL(window.location.href);
-    const er = u.searchParams.get('editRunId');
-    const el = u.searchParams.get('editLiftId');
-    if (er) {
-      const id = Number(er);
-      const found = recentRuns.find((x) => x.id === id);
-      if (found) openRunEditor(found);
-      else fetch(`/api/logs/history?type=run&limit=1&offset=0`).finally(() => {}); // noop, history endpoint returns arrays
-    }
-    if (el) {
-      const id = Number(el);
-      const found = recentLifts.find((x) => x.id === id);
-      if (found) openLiftEditor(found);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recentRuns, recentLifts]);
-
-  // ---------- helpers ----------
   function setRunField<K extends keyof RunLog>(k: K, v: any) {
     setRun((f) => ({ ...f, [k]: v }));
   }
-  function setLiftField<K extends keyof LiftLog>(k: K, v: any) {
-    setLift((f) => ({ ...f, [k]: v }));
-  }
-
   function resetRunForm() {
     setEditingRunId(null);
     setRun({ logDate: isoToday(), runType: 'Easy', actualDistance: 0, actualPace: '', rpe: 7, notes: '' });
   }
-  function resetLiftForm() {
-    setEditingLiftId(null);
-    setLift({ logDate: isoToday(), dayType: 'Push', exercise: LIFT_EXERCISES[0], weight: 0, sets: 3, reps: 8, rpe: 7, notes: '' });
-  }
-
   function openRunEditor(entry?: RunLog) {
     if (entry) {
       setEditingRunId(entry.id!);
@@ -134,7 +88,54 @@ export default function TodayPage() {
     }
     setRunOpen(true);
   }
+  async function saveRun() {
+    const method = editingRunId ? 'PUT' : 'POST';
+    const url = editingRunId ? `/api/logs/run/${editingRunId}` : '/api/logs/run';
+    const ok = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(run),
+    }).then((r) => r.ok).catch(() => false);
+    if (ok) {
+      toast({ title: editingRunId ? 'Run updated' : 'Run saved', description: 'Entry stored successfully.' });
+      setRunOpen(false);
+      resetRunForm();
+      loadRecent();
+    } else {
+      toast({ title: 'Error', description: 'Could not save run.' });
+    }
+  }
+  async function deleteRun(id: number) {
+    const ok = await fetch(`/api/logs/run/${id}`, { method: 'DELETE' }).then((r) => r.ok).catch(() => false);
+    if (ok) {
+      toast({ title: 'Run deleted', description: 'Entry removed.' });
+      loadRecent();
+    } else {
+      toast({ title: 'Error', description: 'Could not delete run.' });
+    }
+  }
 
+  // ---------- LIFT modal ----------
+  const [liftOpen, setLiftOpen] = useState(false);
+  const [editingLiftId, setEditingLiftId] = useState<number | null>(null);
+  const [lift, setLift] = useState<LiftLog>({
+    logDate: isoToday(),
+    dayType: 'Push',
+    exercise: LIFT_EXERCISES[0],
+    weight: 0,
+    sets: 3,
+    reps: 8,
+    rpe: 7,
+    notes: '',
+  });
+
+  function setLiftField<K extends keyof LiftLog>(k: K, v: any) {
+    setLift((f) => ({ ...f, [k]: v }));
+  }
+  function resetLiftForm() {
+    setEditingLiftId(null);
+    setLift({ logDate: isoToday(), dayType: 'Push', exercise: LIFT_EXERCISES[0], weight: 0, sets: 3, reps: 8, rpe: 7, notes: '' });
+  }
   function openLiftEditor(entry?: LiftLog) {
     if (entry) {
       setEditingLiftId(entry.id!);
@@ -153,30 +154,6 @@ export default function TodayPage() {
     }
     setLiftOpen(true);
   }
-
-  async function saveRun() {
-    const method = editingRunId ? 'PUT' : 'POST';
-    const url = editingRunId ? `/api/logs/run/${editingRunId}` : '/api/logs/run';
-    const ok = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(run),
-    })
-      .then((r) => r.ok)
-      .catch(() => false);
-    if (ok) {
-      toast({
-        title: editingRunId ? 'Run updated' : 'Run saved',
-        description: 'Entry stored successfully.',
-      });
-      setRunOpen(false);
-      resetRunForm();
-      loadRecent();
-    } else {
-      toast({ title: 'Error', description: 'Could not save run.' });
-    }
-  }
-
   async function saveLift() {
     const method = editingLiftId ? 'PUT' : 'POST';
     const url = editingLiftId ? `/api/logs/lift/${editingLiftId}` : '/api/logs/lift';
@@ -184,14 +161,9 @@ export default function TodayPage() {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(lift),
-    })
-      .then((r) => r.ok)
-      .catch(() => false);
+    }).then((r) => r.ok).catch(() => false);
     if (ok) {
-      toast({
-        title: editingLiftId ? 'Lift updated' : 'Lift saved',
-        description: 'Entry stored successfully.',
-      });
+      toast({ title: editingLiftId ? 'Lift updated' : 'Lift saved', description: 'Entry stored successfully.' });
       setLiftOpen(false);
       resetLiftForm();
       loadRecent();
@@ -199,23 +171,8 @@ export default function TodayPage() {
       toast({ title: 'Error', description: 'Could not save lift.' });
     }
   }
-
-  async function deleteRun(id: number) {
-    const ok = await fetch(`/api/logs/run/${id}`, { method: 'DELETE' })
-      .then((r) => r.ok)
-      .catch(() => false);
-    if (ok) {
-      toast({ title: 'Run deleted', description: 'Entry removed.' });
-      loadRecent();
-    } else {
-      toast({ title: 'Error', description: 'Could not delete run.' });
-    }
-  }
-
   async function deleteLift(id: number) {
-    const ok = await fetch(`/api/logs/lift/${id}`, { method: 'DELETE' })
-      .then((r) => r.ok)
-      .catch(() => false);
+    const ok = await fetch(`/api/logs/lift/${id}`, { method: 'DELETE' }).then((r) => r.ok).catch(() => false);
     if (ok) {
       toast({ title: 'Lift deleted', description: 'Entry removed.' });
       loadRecent();
@@ -223,6 +180,24 @@ export default function TodayPage() {
       toast({ title: 'Error', description: 'Could not delete lift.' });
     }
   }
+
+  // ---------- open by query param (optional deep-link from History) ----------
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    const er = u.searchParams.get('editRunId');
+    const el = u.searchParams.get('editLiftId');
+    if (er) {
+      const id = Number(er);
+      const found = recentRuns.find((x) => x.id === id);
+      if (found) openRunEditor(found);
+    }
+    if (el) {
+      const id = Number(el);
+      const found = recentLifts.find((x) => x.id === id);
+      if (found) openLiftEditor(found);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentRuns, recentLifts]);
 
   return (
     <Fade>
@@ -245,7 +220,9 @@ export default function TodayPage() {
               <div className="overflow-x-auto">
                 <table className="table">
                   <thead>
-                    <tr><th>Date</th><th>Type</th><th>Mi</th><th>Pace</th><th>RPE</th><th>Notes</th><th className="w-px"></th></tr>
+                    <tr>
+                      <th>Date</th><th>Type</th><th>Mi</th><th>Pace</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
+                    </tr>
                   </thead>
                   <tbody>
                     {recentRuns.map((r) => (
@@ -255,7 +232,7 @@ export default function TodayPage() {
                         <td className="p-2">{r.actualDistance ?? ''}</td>
                         <td className="p-2">{r.actualPace ?? ''}</td>
                         <td className="p-2">{r.rpe ?? ''}</td>
-                        <td className="p-2">{r.notes ?? ''}</td>
+                        <td className="p-2 max-w-[280px] truncate sm:whitespace-normal sm:max-w-none">{r.notes ?? ''}</td>
                         <td className="p-2 whitespace-nowrap">
                           <button className="btn mr-2" onClick={() => openRunEditor(r as any)}>Edit</button>
                           <button className="btn" onClick={() => deleteRun(r.id!)}>Delete</button>
@@ -283,7 +260,9 @@ export default function TodayPage() {
               <div className="overflow-x-auto">
                 <table className="table">
                   <thead>
-                    <tr><th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th><th className="w-px"></th></tr>
+                    <tr>
+                      <th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
+                    </tr>
                   </thead>
                   <tbody>
                     {recentLifts.map((l) => (
@@ -294,7 +273,7 @@ export default function TodayPage() {
                         <td className="p-2">{l.weight ?? ''}</td>
                         <td className="p-2">{(l.sets ?? 0)}×{(l.reps ?? 0)}</td>
                         <td className="p-2">{l.rpe ?? ''}</td>
-                        <td className="p-2">{l.notes ?? ''}</td>
+                        <td className="p-2 max-w-[280px] truncate sm:whitespace-normal sm:max-w-none">{l.notes ?? ''}</td>
                         <td className="p-2 whitespace-nowrap">
                           <button className="btn mr-2" onClick={() => openLiftEditor(l as any)}>Edit</button>
                           <button className="btn" onClick={() => deleteLift(l.id!)}>Delete</button>
@@ -313,8 +292,13 @@ export default function TodayPage() {
       </div>
 
       {/* ---------- RUN MODAL ---------- */}
-      <Modal open={runOpen} onClose={() => { setRunOpen(false); }} title={editingRunId ? 'Edit Run' : 'Log Run'} maxWidthClass="max-w-2xl">
-        <div className="grid gap-3 sm:grid-cols-3">
+      <Modal
+        open={runOpen}
+        onClose={() => { setRunOpen(false); }}
+        title={editingRunId ? 'Edit Run' : 'Log Run'}
+        maxWidthClass="max-w-2xl"
+      >
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
           <label className="text-sm">
             Date
             <input type="date" className="input" value={run.logDate} onChange={(e) => setRunField('logDate', e.target.value)} />
@@ -337,20 +321,25 @@ export default function TodayPage() {
             RPE (1–10)
             <input className="input" type="number" min={1} max={10} value={run.rpe ?? 7} onChange={(e) => setRunField('rpe', parseInt(e.target.value || '7', 10))} />
           </label>
-          <label className="text-sm sm:col-span-3">
+          <label className="text-sm sm:col-span-2">
             Notes
             <textarea className="input" rows={3} value={run.notes || ''} onChange={(e) => setRunField('notes', e.target.value)} />
           </label>
         </div>
-        <div className="mt-4 flex gap-2 justify-end">
+        <div className="mt-2 sm:mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end">
           <button className="btn" onClick={() => { setRunOpen(false); resetRunForm(); }}>Cancel</button>
           <button className="btn" onClick={saveRun}>{editingRunId ? 'Update' : 'Save'}</button>
         </div>
       </Modal>
 
       {/* ---------- LIFT MODAL ---------- */}
-      <Modal open={liftOpen} onClose={() => { setLiftOpen(false); }} title={editingLiftId ? 'Edit Lift' : 'Log Lift'} maxWidthClass="max-w-xl">
-        <div className="grid gap-3 sm:grid-cols-3">
+      <Modal
+        open={liftOpen}
+        onClose={() => { setLiftOpen(false); }}
+        title={editingLiftId ? 'Edit Lift' : 'Log Lift'}
+        maxWidthClass="max-w-xl"
+      >
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
           <label className="text-sm">
             Date
             <input type="date" className="input" value={lift.logDate} onChange={(e) => setLiftField('logDate', e.target.value)} />
@@ -379,16 +368,16 @@ export default function TodayPage() {
             Reps
             <input type="number" className="input" value={lift.reps ?? 8} onChange={(e) => setLiftField('reps', parseInt(e.target.value || '8', 10))} />
           </label>
-          <label className="text-sm">
+          <label className="text-sm sm:col-span-2">
             RPE (1–10)
             <input type="number" className="input" min={1} max={10} value={lift.rpe ?? 7} onChange={(e) => setLiftField('rpe', parseInt(e.target.value || '7', 10))} />
           </label>
-          <label className="text-sm sm:col-span-3">
+          <label className="text-sm sm:col-span-2">
             Notes
             <textarea className="input" rows={3} value={lift.notes || ''} onChange={(e) => setLiftField('notes', e.target.value)} />
           </label>
         </div>
-        <div className="mt-4 flex gap-2 justify-end">
+        <div className="mt-2 sm:mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end">
           <button className="btn" onClick={() => { setLiftOpen(false); resetLiftForm(); }}>Cancel</button>
           <button className="btn" onClick={saveLift}>{editingLiftId ? 'Update' : 'Save'}</button>
         </div>
