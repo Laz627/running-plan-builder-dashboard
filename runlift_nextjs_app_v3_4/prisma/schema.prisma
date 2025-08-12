@@ -7,10 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/**
- * SETTINGS — maps to your existing `settings` table.
- * Assumes columns: key TEXT PRIMARY KEY, value TEXT
- */
 model Setting {
   key   String @id @db.Text
   value String @db.Text
@@ -18,10 +14,6 @@ model Setting {
   @@map("settings")
 }
 
-/**
- * RUN LOGS — create these tables if they don’t already exist.
- * Feel free to adjust names/columns if you already created different ones.
- */
 model RunLog {
   id              Int      @id @default(autoincrement())
   logDate         DateTime
@@ -38,9 +30,6 @@ model RunLog {
   @@map("run_logs")
 }
 
-/**
- * LIFT LOGS
- */
 model LiftLog {
   id        Int      @id @default(autoincrement())
   logDate   DateTime
