@@ -37,3 +37,9 @@ body { background-color: rgb(var(--bg)); color: rgb(var(--fg)); }
 
 :root { --chart-stroke: #111; }
 .dark { --chart-stroke: #e5e7eb; }
+
+/* Make cards look less “inset” on mobile while header/background are full-bleed */
+.container-edge {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
