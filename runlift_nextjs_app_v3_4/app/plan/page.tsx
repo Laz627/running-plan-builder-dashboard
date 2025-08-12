@@ -26,8 +26,6 @@ function defaultPlan(){
   ];
 }
 
-const Fade = ({children}:{children:React.ReactNode}) => (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} transition={{duration:0.25}}>{children}</motion.div>);
-
 export default function PlanPage(){
   const [settings, setSettings] = useState<any>({});
   const [plan, setPlan] = useState<string[][]>(defaultPlan());
