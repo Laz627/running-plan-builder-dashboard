@@ -112,9 +112,21 @@ export default function ChartsPage() {
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="x" />
-                <YAxis tickFormatter={(t)=>secToMMSS(Number(t))} />
-                <Tooltip formatter={(v:any, name:any, props:any)=> name==='y' ? secToMMSS(Number(v)) : v} />
+                <XAxis
+                  dataKey="x"
+                  type="category"                  // 👈 important
+                  allowDuplicatedCategory={false}  // cleaner labels
+                />
+                <YAxis
+                  dataKey="y"
+                  type="number"
+                  tickFormatter={(t)=>secToMMSS(Number(t))}
+                  domain={['dataMin - 15', 'dataMax + 15']}
+                />
+                <Tooltip
+                  formatter={(v:any, name:any) => name === 'y' ? secToMMSS(Number(v)) : v}
+                  labelFormatter={(lab) => lab}
+                />
                 <Legend />
                 <Scatter
                   name="Actual Pace"
