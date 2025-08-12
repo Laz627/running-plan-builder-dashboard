@@ -1,8 +1,6 @@
-import { motion } from 'framer-motion';
-
 'use client';
 import Fade from '@/components/Fade';
-
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import Card from '@/components/Card';
 import { toast } from '@/components/Toaster';
@@ -77,5 +75,6 @@ export default function SettingsPage(){
         <button onClick={save} className="btn">Save</button>
       </div>
     </div>
+  </Fade>  
   );
 }
