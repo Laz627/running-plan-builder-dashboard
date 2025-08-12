@@ -1,16 +1,10 @@
-import { motion } from 'framer-motion';
-
 'use client';
-import Fade from '@/components/Fade';
 
-import { useEffect, useMemo, useState } from 'react';
+import Fade from '@/components/Fade';
 import Card from '@/components/Card';
+import { useEffect, useState } from 'react';
 
 type Ex = { name:string; start:number; region:'upper'|'lower'; assist?:boolean };
-
-function getSettings(): Promise<any> {
-  return fetch('/api/settings').then(r=>r.json());
-}
 
 function buildWeeks(exs: Ex[], incUpper:number, incLower:number, incAssist:number){
   const weeks = Array.from({length:12}, (_,i)=>i+1);
@@ -19,7 +13,6 @@ function buildWeeks(exs: Ex[], incUpper:number, incLower:number, incAssist:numbe
     let cur = ex.start;
     weeks.forEach(()=>{
       weights.push(cur);
-      // default progression assumes RPE <= 7; user can override via logs later
       if (ex.assist){
         cur = Math.max(0, cur - incAssist);
       } else {
@@ -31,9 +24,37 @@ function buildWeeks(exs: Ex[], incUpper:number, incLower:number, incAssist:numbe
   return { weeks, rows };
 }
 
+function Table({title, table}:{title:string; table:{weeks:number[], rows:{name:string; weights:number[]}[]}}){
+  return (
+    <Card title={title}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className="p-2 text-left">Exercise</th>
+              {table.weeks.map(w => <th key={w} className="p-2 text-center">W{w}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((r,i)=>(
+              <tr key={i} className="border-t">
+                <td className="p-2 font-medium">{r.name}</td>
+                {r.weights.map((w,idx)=>(<td key={idx} className="p-2 text-center">{w || '-'}</td>))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-600 dark:text-gray-300 mt-2">
+        Progression rule: if RPE ≤ 7, +upper/+lower; for assisted moves, reduce assistance weekly (all configurable in Settings).
+      </p>
+    </Card>
+  );
+}
+
 export default function LiftPage(){
   const [s, setS] = useState<any>({});
-  useEffect(()=>{ getSettings().then(setS); }, []);
+  useEffect(()=>{ fetch('/api/settings').then(r=>r.json()).then(setS); }, []);
 
   const incUpper = parseInt(s.inc_upper||'5'); 
   const incLower = parseInt(s.inc_lower||'10');
@@ -60,38 +81,13 @@ export default function LiftPage(){
   const pullTable = buildWeeks(pull, incUpper, incLower, incAssist);
   const legTable  = buildWeeks(legs, incUpper, incLower, incAssist);
 
-  function Table({title, table}:{title:string; table:{weeks:number[], rows:{name:string; weights:number[]}[]}}){
-    return (
-      <Card title={title}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                <th className="p-2 text-left">Exercise</th>
-                {table.weeks.map(w => <th key={w} className="p-2 text-center">W{w}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.map((r,i)=>(
-                <tr key={i} className="border-t">
-                  <td className="p-2 font-medium">{r.name}</td>
-                  {r.weights.map((w,idx)=>(<td key={idx} className="p-2 text-center">{w || '-'}</td>))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-xs text-gray-600 mt-2">Progression rule: if RPE ≤ 7, +{incUpper} lb (upper) / +{incLower} lb (lower); for assisted moves, -{incAssist} lb assistance each week.</p>
-      </Card>
-    );
-  }
-
   return (
     <Fade>
       <div className="grid gap-4">
-      <Table title="Push Day (3×8)" table={pushTable} />
-      <Table title="Pull Day (3×8)" table={pullTable} />
-      <Table title="Leg Day (3×8)" table={legTable} />
-    </div>
+        <Table title="Push Day (3×8)" table={pushTable} />
+        <Table title="Pull Day (3×8)" table={pullTable} />
+        <Table title="Leg Day (3×8)" table={legTable} />
+      </div>
+    </Fade>
   );
 }
