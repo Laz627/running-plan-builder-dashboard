@@ -15,7 +15,6 @@ model Setting {
   @@map("settings")
 }
 
-/* RUN LOGS */
 model RunLog {
   id              Int      @id @default(autoincrement())
   logDate         DateTime
