@@ -10,11 +10,7 @@ export const metadata = {
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link
-      href={href}
-      prefetch={false}
-      className="navlink inline-flex items-center gap-2 px-3 py-2 rounded-md"
-    >
+    <Link href={href} prefetch={false} className="navlink inline-flex items-center gap-2 px-3 py-2 rounded-md">
       {children}
     </Link>
   );
@@ -24,7 +20,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        {/* allow content to extend into device safe areas */}
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#0a0a0a" />
@@ -33,9 +28,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           {/* FULL-BLEED HEADER */}
           <header className="sticky top-0 z-40 bg-white/92 dark:bg-[rgb(var(--card))]/92 backdrop-blur border-b border-gray-200 dark:border-gray-800">
-            {/* full width background; inner content centered */}
-            <div className="mx-auto w-full max-w-screen-xl px-[max(16px,env(safe-area-inset-left))] pr-[max(16px,env(safe-area-inset-right))] py-3 flex items-center justify-between">
-              <h1 className="text-lg sm:text-xl font-semibold">🏃‍♂️ Run + 💪 Lift</h1>
+            {/* Center the content but let background span the screen */}
+            <div className="mx-auto w-full max-w-screen-xl
+                            pl-[max(16px,env(safe-area-inset-left))]
+                            pr-[max(16px,env(safe-area-inset-right))]
+                            py-3 flex items-center justify-between">
+              <h1 className="text-xl font-semibold">🏃‍♂️ Run + 💪 Lift</h1>
               <nav className="hidden sm:flex gap-2 text-sm">
                 <NavLink href="/today">Today</NavLink>
                 <NavLink href="/plan">Plan</NavLink>
@@ -49,14 +47,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </header>
 
-          {/* MAIN CONTENT */}
-          <main className="mx-auto w-full max-w-screen-xl px-[max(16px,env(safe-area-inset-left))] pr-[max(16px,env(safe-area-inset-right))] py-4 pb-[calc(72px+env(safe-area-inset-bottom))]">
+          {/* MAIN */}
+          <main className="mx-auto w-full max-w-screen-xl
+                           pl-[max(16px,env(safe-area-inset-left))]
+                           pr-[max(16px,env(safe-area-inset-right))]
+                           pt-4 pb-[calc(72px+env(safe-area-inset-bottom))]">
             {children}
           </main>
 
-          {/* MOBILE BOTTOM NAV (full-bleed, safe-area aware) */}
+          {/* MOBILE BOTTOM NAV */}
           <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-[rgb(var(--card))]/95 backdrop-blur">
-            <div className="mx-auto w-full max-w-screen-xl px-[max(8px,env(safe-area-inset-left))] pr-[max(8px,env(safe-area-inset-right))]">
+            <div className="mx-auto w-full max-w-screen-xl
+                            pl-[max(8px,env(safe-area-inset-left))]
+                            pr-[max(8px,env(safe-area-inset-right))]">
               <div className="grid grid-cols-5">
                 <Link href="/today" prefetch={false} className="flex items-center justify-center py-3 text-sm">Today</Link>
                 <Link href="/plan" prefetch={false} className="flex items-center justify-center py-3 text-sm">Plan</Link>
@@ -65,7 +68,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/history" prefetch={false} className="flex items-center justify-center py-3 text-sm">History</Link>
               </div>
             </div>
-            {/* safe-area bottom spacer */}
             <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} />
           </nav>
         </Providers>
