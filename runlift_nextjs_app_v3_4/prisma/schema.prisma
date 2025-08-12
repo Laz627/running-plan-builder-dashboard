@@ -7,10 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* SETTINGS — matches an existing table with:
-   id SERIAL PRIMARY KEY, key TEXT UNIQUE, value TEXT
-   (If your column names differ by case, add @map("colname") on those fields.)
-*/
 model Setting {
   id    Int    @id @default(autoincrement())
   key   String @unique @db.Text
@@ -36,7 +32,6 @@ model RunLog {
   @@map("run_logs")
 }
 
-/* LIFT LOGS */
 model LiftLog {
   id        Int      @id @default(autoincrement())
   logDate   DateTime
