@@ -1,6 +1,5 @@
 'use client';
 import Fade from '@/components/Fade';
-import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import Card from '@/components/Card';
 import { toast } from '@/components/Toaster';
