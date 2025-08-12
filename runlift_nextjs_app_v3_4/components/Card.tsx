@@ -6,11 +6,11 @@ import clsx from 'clsx';
 type CardProps = {
   title?: ReactNode;
   subtitle?: ReactNode;
-  actions?: ReactNode;           // right-side header actions
+  actions?: ReactNode;
   children: ReactNode;
   className?: string;
-  contentClassName?: string;     // extra classes for inner content
-  noXScroll?: boolean;           // set true to disable horizontal scroll wrapper
+  contentClassName?: string;
+  noXScroll?: boolean; // set true to disable horizontal scroll for this card
 };
 
 export default function Card({
@@ -23,10 +23,7 @@ export default function Card({
   noXScroll = false,
 }: CardProps) {
   return (
-    <section className={clsx(
-      'card',                      // uses your Tailwind @apply styles
-      className
-    )}>
+    <section className={clsx('card', className)}>
       {(title || actions) && (
         <header className="mb-3 flex items-start justify-between gap-3">
           <div>
@@ -34,22 +31,25 @@ export default function Card({
               ? <h3 className="text-lg font-semibold">{title}</h3>
               : title}
             {subtitle && (
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {subtitle}
-              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
             )}
           </div>
           {actions && <div className="shrink-0">{actions}</div>}
         </header>
       )}
 
-      {/* Content: wrap in horizontal scroll by default for ALL cards */}
-      <div className={clsx(
-        noXScroll ? undefined : 'scroll-x',
-        'min-w-0',                  // prevents children from forcing page-wide overflow
-        contentClassName
-      )}>
-        {children}
+      {/* Scroll container for ALL cards */}
+      <div
+        className={clsx(
+          noXScroll ? undefined : 'scroll-x', // gives horizontal scrolling
+          'min-w-0',                          // prevent parent overflow
+          contentClassName
+        )}
+      >
+        {/* Make inner content size to its own width so it can overflow */}
+        <div className={noXScroll ? undefined : 'inline-block min-w-max'}>
+          {children}
+        </div>
       </div>
     </section>
   );
