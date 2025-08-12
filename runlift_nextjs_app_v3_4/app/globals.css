@@ -70,3 +70,6 @@ html, body {
 /* Nicer touch feel */
 * { -webkit-tap-highlight-color: transparent; }
 
+/* app/globals.css */
+html, body { overflow-x: hidden; }
+
