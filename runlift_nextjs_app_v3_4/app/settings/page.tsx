@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import Card from '@/components/Card';
 import { toast } from '@/components/Toaster';
+import Fade from '@/components/Fade';
 
 const Fade = ({children}:{children:React.ReactNode}) => (<motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} transition={{duration:0.25}}>{children}</motion.div>);
 
