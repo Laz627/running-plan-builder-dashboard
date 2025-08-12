@@ -5,9 +5,13 @@ import numpy as np
 from datetime import date, datetime, timedelta
 import json, re
 
+st.set_page_config(page_title="Run + Lift Dashboard", layout="wide")
+
 from db import init_db, set_setting, get_setting, add_run_log, add_lift_log
 
-st.set_page_config(page_title="Run + Lift Dashboard", layout="wide")
+ok = init_db()
+if not ok:
+    st.warning("Database not connected. Set DATABASE_URL on Railway to enable persistence.")
 
 # ---------- Styles ----------
 st.markdown("""
