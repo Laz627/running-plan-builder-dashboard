@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import Card from '@/components/Card';
 import Modal from '@/components/Modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from '@/components/Toaster';
 import { LIFT_EXERCISES, RUN_TYPES } from '@/lib/exercises';
 
@@ -29,7 +29,7 @@ type LiftLog = {
   logDate: string;
   dayType?: string | null;
   exercise?: string | null;
-  weight?: number | null;
+  weight?: number | null; // for assisted machines this is "assist lbs"
   sets?: number | null;
   reps?: number | null;
   rpe?: number | null;
@@ -39,6 +39,11 @@ type LiftLog = {
 type Settings = {
   goal_mp?: string; tempo_base?: string; easy_base?: string; speed_base?: string; recovery_base?: string;
   temp?: string; humidity?: string;
+
+  // lifting
+  start_incline?: string; start_shoulder?: string; start_dips?: string; start_rows?: string;
+  start_pu?: string; start_lat?: string; start_legpress?: string; start_ham?: string; start_calf?: string;
+  inc_upper?: string; inc_lower?: string; inc_assist?: string;
 };
 
 /* =========================
@@ -74,9 +79,9 @@ function heatAdjMultiplier(tempF: number, humidityPct: number): number {
 }
 
 /* =========================
-   RPE targets + stacking logic
+   RUN: RPE targets + stacking
 ========================= */
-const RPE_TARGET: Record<string, [number, number]> = {
+const RPE_TARGET_RUN: Record<string, [number, number]> = {
   Marathon: [5, 6],
   Tempo: [6, 7],
   Easy: [4, 5],
@@ -84,8 +89,7 @@ const RPE_TARGET: Record<string, [number, number]> = {
   Recovery: [3, 4],
 };
 
-// Count consecutive out-of-range RPEs for a run type (newest first)
-function consecutiveOutOfRange(runs: RunLog[], runType: string, low: number, high: number) {
+function consecutiveOutOfRangeRuns(runs: RunLog[], runType: string, low: number, high: number) {
   const recentSame = [...runs]
     .filter(r => r.runType === runType)
     .sort((a, b) => (a.logDate < b.logDate ? 1 : -1)); // newest first
@@ -102,10 +106,9 @@ function consecutiveOutOfRange(runs: RunLog[], runType: string, low: number, hig
   return { highStreak, lowStreak };
 }
 
-// Translate streaks to seconds delta (applied to today's pace)
 function rpeAdjSeconds(runs: RunLog[], runType: string) {
-  const [low, high] = RPE_TARGET[runType] ?? [5, 7];
-  const { highStreak, lowStreak } = consecutiveOutOfRange(runs, runType, low, high);
+  const [low, high] = RPE_TARGET_RUN[runType] ?? [5, 7];
+  const { highStreak, lowStreak } = consecutiveOutOfRangeRuns(runs, runType, low, high);
   let sec = 0;
   if (highStreak >= 1) sec += 5; // +5s if last was too hard
   if (highStreak >= 2) sec += 5; // +10s for two in a row
@@ -115,8 +118,7 @@ function rpeAdjSeconds(runs: RunLog[], runType: string) {
 }
 
 /* =========================
-   Build a band row with
-   weather + RPE adjustments
+   RUN: Bands row
 ========================= */
 function bandRow(
   name: string,
@@ -141,6 +143,121 @@ function bandRow(
 }
 
 /* =========================
+   LIFT: categories, targets, stacking
+========================= */
+const LIFT_RPE_TARGET: [number, number] = [7, 8]; // aim: 7–8 on working sets
+
+function exerciseCategory(ex: string): 'upper' | 'lower' | 'assist' {
+  const e = ex.toLowerCase();
+  if (e.includes('assisted pull') || e.includes('assisted dip')) return 'assist';
+  if (e.includes('leg') || e.includes('hamstring') || e.includes('calf')) return 'lower';
+  return 'upper';
+}
+
+function lastWeightForExercise(logs: LiftLog[], ex: string): number | null {
+  const recent = [...logs]
+    .filter(l => l.exercise === ex && l.weight != null)
+    .sort((a, b) => (a.logDate < b.logDate ? 1 : -1));
+  return recent.length ? (recent[0].weight ?? null) : null;
+}
+
+function consecutiveOutOfRangeLifts(logs: LiftLog[], ex: string, low: number, high: number) {
+  const recent = [...logs]
+    .filter(l => l.exercise === ex)
+    .sort((a, b) => (a.logDate < b.logDate ? 1 : -1)); // newest first
+
+  let highStreak = 0;
+  let lowStreak = 0;
+
+  for (const l of recent) {
+    if (l.rpe == null) continue;
+    if (l.rpe > high) { highStreak++; lowStreak = 0; }
+    else if (l.rpe < low) { lowStreak++; highStreak = 0; }
+    else { break; }
+  }
+  return { highStreak, lowStreak };
+}
+
+/**
+ * Compute today's recommended weight/assist for an exercise.
+ * Rules:
+ * - Start from most recent logged weight, else from settings "start_*".
+ * - If RPE high streak: decrease by 1 increment per step (cap 3).
+ * - If RPE low streak >= 2: increase by 1 increment.
+ * - Aggressive = +1 more increment (harder), Conservative = -1 increment (easier).
+ * - For "assist" exercises, "increasing difficulty" means LOWER assist.
+ */
+function liftRecommendation(
+  ex: string,
+  logs: LiftLog[],
+  settings: Settings
+) {
+  const cat = exerciseCategory(ex);
+  const incUpper = Number(settings.inc_upper ?? '5');
+  const incLower = Number(settings.inc_lower ?? '10');
+  const incAssist = Number(settings.inc_assist ?? '5');
+  const inc = cat === 'assist' ? incAssist : (cat === 'lower' ? incLower : incUpper);
+
+  // Map exercise -> starting weight key in settings
+  const startMap: Record<string, string | undefined> = {
+    'Incline Chest Press (lb)': settings.start_incline,
+    'Shoulder Press (lb)': settings.start_shoulder,
+    'Assisted Dips (assist lb)': settings.start_dips,
+    'Seated Rows (lb)': settings.start_rows,
+    'Assisted Pull-ups (assist lb)': settings.start_pu,
+    'Lat Pulldowns (lb)': settings.start_lat,
+    'Leg Press (lb)': settings.start_legpress,
+    'Hamstring Curl (lb)': settings.start_ham,
+    'Calf Raises (lb)': settings.start_calf,
+  };
+
+  // Try exact match, then fuzzy fallback by includes
+  let startValStr = startMap[ex];
+  if (!startValStr) {
+    const lowerKey = Object.keys(startMap).find(k => ex.toLowerCase().includes(k.toLowerCase().split(' (')[0]));
+    if (lowerKey) startValStr = startMap[lowerKey];
+  }
+
+  const last = lastWeightForExercise(logs, ex);
+  const start = Number(startValStr ?? (cat === 'assist' ? '60' : '35'));
+  const base = (last ?? start);
+
+  const { highStreak, lowStreak } = consecutiveOutOfRangeLifts(logs, ex, LIFT_RPE_TARGET[0], LIFT_RPE_TARGET[1]);
+
+  // Determine delta in lbs (positive means "harder": more weight, or less assist)
+  let delta = 0;
+  if (highStreak >= 1) delta -= inc;
+  if (highStreak >= 2) delta -= inc; // cap implied at 3
+  if (highStreak >= 3) delta -= inc;
+  if (lowStreak >= 2) delta += inc;
+
+  // For assist machines: "harder" = lower assist number
+  const apply = (w: number, deltaLbs: number) => {
+    if (cat === 'assist') return Math.max(0, w - deltaLbs); // lower assist when delta positive
+    return Math.max(0, w + deltaLbs); // raise weight
+  };
+
+  const today = apply(base, Math.max(-3 * inc, Math.min(3 * inc, delta))); // safety clamp
+  const aggressive = apply(today, inc);      // one more step harder
+  const conservative = apply(today, -inc);   // one step easier
+
+  // RPE delta display: signed lbs (for assist, positive means "less assist", but we show numeric lbs)
+  // For clarity in UI, show +X/-X without inversion.
+  const rpeDeltaLbs = (cat === 'assist') ? -delta : delta;
+
+  return {
+    exercise: ex,
+    last: base,
+    today,
+    aggressive,
+    conservative,
+    rpeDeltaLbs, // signed; + means harder suggestion from RPE trend
+    inc,
+    cat,
+  };
+}
+
+/* =========================
    Component
 ========================= */
 export default function TodayPage() {
@@ -148,16 +265,19 @@ export default function TodayPage() {
   const [recentRuns, setRecentRuns] = useState<RunLog[]>([]);
   const [recentLifts, setRecentLifts] = useState<LiftLog[]>([]);
   async function loadRecent() {
-    const r = await fetch('/api/logs/history?type=all&limit=30').then((r) => r.json());
+    const r = await fetch('/api/logs/history?type=all&limit=60').then((r) => r.json());
     setRecentRuns(r.runs || []);
     setRecentLifts(r.lifts || []);
   }
   useEffect(() => { loadRecent(); }, []);
 
-  // ---- settings (for pace & weather)
+  // ---- settings (for pace & weather + lift starts/increments)
   const [settings, setSettings] = useState<Settings>({
     goal_mp:'9:40', tempo_base:'9:00', easy_base:'10:30', speed_base:'7:55', recovery_base:'10:35',
-    temp:'80', humidity:'60'
+    temp:'80', humidity:'60',
+    start_incline:'35', start_shoulder:'35', start_dips:'60', start_rows:'90',
+    start_pu:'60', start_lat:'75', start_legpress:'160', start_ham:'60', start_calf:'45',
+    inc_upper:'5', inc_lower:'10', inc_assist:'5'
   });
   useEffect(() => {
     fetch('/api/settings')
@@ -166,24 +286,30 @@ export default function TodayPage() {
       .catch(() => {/* ignore */});
   }, []);
 
+  /* ---------- RUN bands ---------- */
   const tempF = Number(settings.temp ?? '80');
   const humidityPct = Number(settings.humidity ?? '60');
 
-  const rpeSec = {
+  const rpeSec = useMemo(() => ({
     Marathon: rpeAdjSeconds(recentRuns, 'Marathon'),
     Tempo:    rpeAdjSeconds(recentRuns, 'Tempo'),
     Easy:     rpeAdjSeconds(recentRuns, 'Easy'),
     Speed:    rpeAdjSeconds(recentRuns, 'Speed'),
     Recovery: rpeAdjSeconds(recentRuns, 'Recovery'),
-  };
+  }), [recentRuns]);
 
-  const paceRows = [
+  const paceRows = useMemo(() => ([
     bandRow('Marathon', settings.goal_mp,      tempF, humidityPct, -10, +15, rpeSec.Marathon),
     bandRow('Tempo',    settings.tempo_base,   tempF, humidityPct, -10, +15, rpeSec.Tempo),
     bandRow('Easy',     settings.easy_base,    tempF, humidityPct, -10, +15, rpeSec.Easy),
     bandRow('Speed',    settings.speed_base,   tempF, humidityPct, -10, +15, rpeSec.Speed),
     bandRow('Recovery', settings.recovery_base,tempF, humidityPct, -10, +15, rpeSec.Recovery),
-  ];
+  ]), [settings, tempF, humidityPct, rpeSec]);
+
+  /* ---------- LIFT recommendations ---------- */
+  const liftRecs = useMemo(() => {
+    return LIFT_EXERCISES.map(ex => liftRecommendation(ex, recentLifts, settings));
+  }, [recentLifts, settings]);
 
   // ---------- RUN modal ----------
   const [runOpen, setRunOpen] = useState(false);
@@ -335,7 +461,6 @@ export default function TodayPage() {
 
           {/* ---------- RUN TAB ---------- */}
           <TabsContent value="run">
-            {/* Pace bands with weather + RPE stacking */}
             <Card
               title="Today’s Pace Bands"
               subtitle={`Adjusted for ${tempF}°F / ${humidityPct}% humidity + recent RPE`}
@@ -379,7 +504,7 @@ export default function TodayPage() {
 
             {/* Log/Edit card */}
             <div className="mb-8">
-              <Card title="Log or Edit a Run">
+              <Card title="Log or Edit a Run" noXScroll>
                 <div className="flex flex-wrap gap-2">
                   <button className="btn" onClick={() => openRunEditor()}>New Run</button>
                 </div>
@@ -423,21 +548,65 @@ export default function TodayPage() {
 
           {/* ---------- LIFT TAB ---------- */}
           <TabsContent value="lift">
+            {/* Lift auto-adjust recommendations (per exercise) */}
+            <Card
+              title="Today’s Lift Recommendations"
+              subtitle="Based on your recent RPE trends and starting weights"
+              className="mb-6"
+            >
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Exercise</th>
+                      <th>Last</th>
+                      <th>Today (Rec)</th>
+                      <th>Aggressive</th>
+                      <th>Conservative</th>
+                      <th>RPE Δ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {liftRecs.map((rec) => (
+                      <tr key={rec.exercise}>
+                        <td className="p-2">{rec.exercise}</td>
+                        <td className="p-2">{rec.last ?? '-'}</td>
+                        <td className="p-2"><span className="pill">{rec.today}</span></td>
+                        <td className="p-2">{rec.aggressive}</td>
+                        <td className="p-2">{rec.conservative}</td>
+                        <td className="p-2">
+                          {rec.rpeDeltaLbs === 0 ? (
+                            <span className="pill">0 lb</span>
+                          ) : rec.rpeDeltaLbs > 0 ? (
+                            <span className="pill">+{rec.rpeDeltaLbs} lb</span>
+                          ) : (
+                            <span className="pill">{rec.rpeDeltaLbs} lb</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* Log/Edit LIFT */}
             <div className="mb-8">
-              <Card title="Log or Edit a Lift">
+              <Card title="Log or Edit a Lift" noXScroll>
                 <div className="flex flex-wrap gap-2">
                   <button className="btn" onClick={() => openLiftEditor()}>New Lift</button>
                 </div>
               </Card>
             </div>
 
+            {/* Recent Lifts */}
             <div className="mt-8">
               <Card title="Recent Lifts">
                 <div className="overflow-x-auto">
                   <table className="table">
                     <thead>
                       <tr>
-                        <th>Date</th><th>Day</th><th>Exercise</th><th>Weight</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
+                        <th>Date</th><th>Day</th><th>Exercise</th><th>Weight/Assist</th><th>Sets×Reps</th><th>RPE</th><th>Notes</th><th className="w-px"></th>
                       </tr>
                     </thead>
                     <tbody>
