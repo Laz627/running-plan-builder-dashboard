@@ -66,10 +66,14 @@ function fmtPace(sec: number | null): string {
   const r = s % 60;
   return `${m}:${r.toString().padStart(2,'0')}`;
 }
+const num = (x: any, d = 0) => {
+  const n = typeof x === 'number' ? x : parseFloat(String(x || '').trim());
+  return Number.isFinite(n) ? n : d;
+};
 
 /* =========================
-   Weather adj
-   (baseline 60°F/50% humidity)
+   Weather adj for runs
+   (baseline 60°F / 50% humidity)
 ========================= */
 function heatAdjMultiplier(tempF: number, humidityPct: number): number {
   const tAdj = Math.max(0, (tempF - 60) / 5) * 0.01;        // +1% per +5°F
@@ -93,15 +97,13 @@ function consecutiveOutOfRangeRuns(runs: RunLog[], runType: string, low: number,
   const recentSame = [...runs]
     .filter(r => r.runType === runType)
     .sort((a, b) => (a.logDate < b.logDate ? 1 : -1)); // newest first
-
   let highStreak = 0;
   let lowStreak = 0;
-
   for (const r of recentSame) {
     if (r.rpe == null) continue;
     if (r.rpe > high) { highStreak++; lowStreak = 0; }
     else if (r.rpe < low) { lowStreak++; highStreak = 0; }
-    else { break; } // in-range ends streak
+    else { break; }
   }
   return { highStreak, lowStreak };
 }
@@ -110,10 +112,10 @@ function rpeAdjSeconds(runs: RunLog[], runType: string) {
   const [low, high] = RPE_TARGET_RUN[runType] ?? [5, 7];
   const { highStreak, lowStreak } = consecutiveOutOfRangeRuns(runs, runType, low, high);
   let sec = 0;
-  if (highStreak >= 1) sec += 5; // +5s if last was too hard
-  if (highStreak >= 2) sec += 5; // +10s for two in a row
-  if (highStreak >= 3) sec += 5; // +15s for three+ (cap)
-  if (lowStreak >= 2) sec -= 5;  // -5s if consistently too easy
+  if (highStreak >= 1) sec += 5;
+  if (highStreak >= 2) sec += 5;
+  if (highStreak >= 3) sec += 5;
+  if (lowStreak >= 2) sec -= 5;
   return sec;
 }
 
@@ -145,7 +147,7 @@ function bandRow(
 /* =========================
    LIFT: categories, targets, stacking
 ========================= */
-const LIFT_RPE_TARGET: [number, number] = [7, 8]; // aim: 7–8 on working sets
+const LIFT_RPE_TARGET: [number, number] = [7, 8]; // aim: 7–8
 
 function exerciseCategory(ex: string): 'upper' | 'lower' | 'assist' {
   const e = ex.toLowerCase();
@@ -165,10 +167,8 @@ function consecutiveOutOfRangeLifts(logs: LiftLog[], ex: string, low: number, hi
   const recent = [...logs]
     .filter(l => l.exercise === ex)
     .sort((a, b) => (a.logDate < b.logDate ? 1 : -1)); // newest first
-
-  let highStreak = 0;
-  let lowStreak = 0;
-
+  let highStreak = 0; // ≥9 roughly too hard, but we use >8 vs our 7–8 target
+  let lowStreak = 0;  // ≤6 too easy
   for (const l of recent) {
     if (l.rpe == null) continue;
     if (l.rpe > high) { highStreak++; lowStreak = 0; }
@@ -185,7 +185,7 @@ function consecutiveOutOfRangeLifts(logs: LiftLog[], ex: string, low: number, hi
  * - If RPE high streak: decrease by 1 increment per step (cap 3).
  * - If RPE low streak >= 2: increase by 1 increment.
  * - Aggressive = +1 more increment (harder), Conservative = -1 increment (easier).
- * - For "assist" exercises, "increasing difficulty" means LOWER assist.
+ * - For "assist" exercises, "increasing difficulty" means LOWER assist number.
  */
 function liftRecommendation(
   ex: string,
@@ -211,7 +211,6 @@ function liftRecommendation(
     'Calf Raises (lb)': settings.start_calf,
   };
 
-  // Try exact match, then fuzzy fallback by includes
   let startValStr = startMap[ex];
   if (!startValStr) {
     const lowerKey = Object.keys(startMap).find(k => ex.toLowerCase().includes(k.toLowerCase().split(' (')[0]));
@@ -224,25 +223,24 @@ function liftRecommendation(
 
   const { highStreak, lowStreak } = consecutiveOutOfRangeLifts(logs, ex, LIFT_RPE_TARGET[0], LIFT_RPE_TARGET[1]);
 
-  // Determine delta in lbs (positive means "harder": more weight, or less assist)
+  // delta in lbs (positive means "harder": more weight, or less assist)
   let delta = 0;
   if (highStreak >= 1) delta -= inc;
-  if (highStreak >= 2) delta -= inc; // cap implied at 3
+  if (highStreak >= 2) delta -= inc;
   if (highStreak >= 3) delta -= inc;
   if (lowStreak >= 2) delta += inc;
 
   // For assist machines: "harder" = lower assist number
   const apply = (w: number, deltaLbs: number) => {
     if (cat === 'assist') return Math.max(0, w - deltaLbs); // lower assist when delta positive
-    return Math.max(0, w + deltaLbs); // raise weight
+    return Math.max(0, w + deltaLbs);
   };
 
-  const today = apply(base, Math.max(-3 * inc, Math.min(3 * inc, delta))); // safety clamp
-  const aggressive = apply(today, inc);      // one more step harder
-  const conservative = apply(today, -inc);   // one step easier
+  const today = apply(base, Math.max(-3 * inc, Math.min(3 * inc, delta))); // clamp
+  const aggressive = apply(today, inc);
+  const conservative = apply(today, -inc);
 
-  // RPE delta display: signed lbs (for assist, positive means "less assist", but we show numeric lbs)
-  // For clarity in UI, show +X/-X without inversion.
+  // RPE delta display (signed lbs; + means harder)
   const rpeDeltaLbs = (cat === 'assist') ? -delta : delta;
 
   return {
@@ -251,7 +249,7 @@ function liftRecommendation(
     today,
     aggressive,
     conservative,
-    rpeDeltaLbs, // signed; + means harder suggestion from RPE trend
+    rpeDeltaLbs,
     inc,
     cat,
   };
@@ -261,7 +259,7 @@ function liftRecommendation(
    Component
 ========================= */
 export default function TodayPage() {
-  // ---- recent logs (used for RPE stacking + tables)
+  // ---- recent logs
   const [recentRuns, setRecentRuns] = useState<RunLog[]>([]);
   const [recentLifts, setRecentLifts] = useState<LiftLog[]>([]);
   async function loadRecent() {
@@ -271,7 +269,7 @@ export default function TodayPage() {
   }
   useEffect(() => { loadRecent(); }, []);
 
-  // ---- settings (for pace & weather + lift starts/increments)
+  // ---- settings
   const [settings, setSettings] = useState<Settings>({
     goal_mp:'9:40', tempo_base:'9:00', easy_base:'10:30', speed_base:'7:55', recovery_base:'10:35',
     temp:'80', humidity:'60',
@@ -287,8 +285,8 @@ export default function TodayPage() {
   }, []);
 
   /* ---------- RUN bands ---------- */
-  const tempF = Number(settings.temp ?? '80');
-  const humidityPct = Number(settings.humidity ?? '60');
+  const tempF = num(settings.temp, 80);
+  const humidityPct = num(settings.humidity, 60);
 
   const rpeSec = useMemo(() => ({
     Marathon: rpeAdjSeconds(recentRuns, 'Marathon'),
@@ -592,7 +590,7 @@ export default function TodayPage() {
 
             {/* Log/Edit LIFT */}
             <div className="mb-8">
-              <Card title="Log or Edit a Lift" noXScroll>
+              <Card title="Log or Edit a Lift">
                 <div className="flex flex-wrap gap-2">
                   <button className="btn" onClick={() => openLiftEditor()}>New Lift</button>
                 </div>
