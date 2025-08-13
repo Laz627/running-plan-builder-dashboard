@@ -504,7 +504,7 @@ export default function TodayPage() {
 
             {/* Log/Edit card */}
             <div className="mb-8">
-              <Card title="Log or Edit a Run" noXScroll>
+              <Card title="Log or Edit a Run">
                 <div className="flex flex-wrap gap-2">
                   <button className="btn" onClick={() => openRunEditor()}>New Run</button>
                 </div>
