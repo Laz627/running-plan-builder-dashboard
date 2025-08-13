@@ -29,7 +29,7 @@ type LiftLog = {
   logDate: string;
   dayType?: string | null;
   exercise?: string | null;
-  weight?: number | null; // for assisted machines this is "assist lbs"
+  weight?: number | null; // assisted = assist lbs
   sets?: number | null;
   reps?: number | null;
   rpe?: number | null;
@@ -37,8 +37,16 @@ type LiftLog = {
 };
 
 type Settings = {
-  goal_mp?: string; tempo_base?: string; easy_base?: string; speed_base?: string; recovery_base?: string;
-  temp?: string; humidity?: string;
+  // run bases
+  goal_mp?: string;     // marathon pace (mm:ss)
+  tempo_base?: string;
+  easy_base?: string;   // kept for backward compat, but MR/Easy now derive from MP
+  speed_base?: string;
+  recovery_base?: string;
+
+  // weather
+  temp?: string;
+  humidity?: string;
 
   // lifting
   start_incline?: string; start_shoulder?: string; start_dips?: string; start_rows?: string;
@@ -47,7 +55,7 @@ type Settings = {
 };
 
 /* =========================
-   Helpers (dates / pace)
+   Small helpers
 ========================= */
 function isoToday() {
   const d = new Date();
@@ -72,8 +80,7 @@ const num = (x: any, d = 0) => {
 };
 
 /* =========================
-   Weather adj for runs
-   (baseline 60°F / 50% humidity)
+   Weather adjustment (baseline 60°F / 50% humidity)
 ========================= */
 function heatAdjMultiplier(tempF: number, humidityPct: number): number {
   const tAdj = Math.max(0, (tempF - 60) / 5) * 0.01;        // +1% per +5°F
@@ -83,10 +90,10 @@ function heatAdjMultiplier(tempF: number, humidityPct: number): number {
 }
 
 /* =========================
-   RUN: RPE targets + stacking
+   RUN: targets + stacking
 ========================= */
 const RPE_TARGET_RUN: Record<string, [number, number]> = {
-  Marathon: [5, 6],
+  Medium: [5, 6],
   Tempo: [6, 7],
   Easy: [4, 5],
   Speed: [8, 9],
@@ -120,18 +127,34 @@ function rpeAdjSeconds(runs: RunLog[], runType: string) {
 }
 
 /* =========================
-   RUN: Bands row
+   RUN: derived bases from MP
+   - Medium = MP + 50s (mid of 45–60s)
+   - Easy   = MP + 75s (mid of 60–90s)
 ========================= */
-function bandRow(
+function deriveMediumFromMP(mp: string | undefined | null): string | null {
+  const mpSec = parsePace(mp);
+  if (mpSec == null) return null;
+  return fmtPace(mpSec + 50); // midpoint of 45–60s slower than MP
+}
+function deriveEasyFromMP(mp: string | undefined | null): string | null {
+  const mpSec = parsePace(mp);
+  if (mpSec == null) return null;
+  return fmtPace(mpSec + 75); // midpoint of 60–90s slower than MP
+}
+
+/* =========================
+   RUN: band row builders
+========================= */
+function bandRowFromStr(
   name: string,
-  baseStr: string | undefined | null,
+  baseStr: string | null | undefined,
   tempF: number,
   humidityPct: number,
   aggrDeltaSec = -10,
   consDeltaSec = +15,
   extraSec = 0
 ) {
-  const base = parsePace(baseStr);
+  const base = parsePace(baseStr || '');
   const mult = heatAdjMultiplier(tempF, humidityPct);
   const today = base ? Math.round(base * mult) + extraSec : null;
   return {
@@ -147,7 +170,7 @@ function bandRow(
 /* =========================
    LIFT: categories, targets, stacking
 ========================= */
-const LIFT_RPE_TARGET: [number, number] = [7, 8]; // aim: 7–8
+const LIFT_RPE_TARGET: [number, number] = [7, 8];
 
 function exerciseCategory(ex: string): 'upper' | 'lower' | 'assist' {
   const e = ex.toLowerCase();
@@ -155,20 +178,18 @@ function exerciseCategory(ex: string): 'upper' | 'lower' | 'assist' {
   if (e.includes('leg') || e.includes('hamstring') || e.includes('calf')) return 'lower';
   return 'upper';
 }
-
 function lastWeightForExercise(logs: LiftLog[], ex: string): number | null {
   const recent = [...logs]
     .filter(l => l.exercise === ex && l.weight != null)
     .sort((a, b) => (a.logDate < b.logDate ? 1 : -1));
   return recent.length ? (recent[0].weight ?? null) : null;
 }
-
 function consecutiveOutOfRangeLifts(logs: LiftLog[], ex: string, low: number, high: number) {
   const recent = [...logs]
     .filter(l => l.exercise === ex)
-    .sort((a, b) => (a.logDate < b.logDate ? 1 : -1)); // newest first
-  let highStreak = 0; // ≥9 roughly too hard, but we use >8 vs our 7–8 target
-  let lowStreak = 0;  // ≤6 too easy
+    .sort((a, b) => (a.logDate < b.logDate ? 1 : -1));
+  let highStreak = 0;
+  let lowStreak = 0;
   for (const l of recent) {
     if (l.rpe == null) continue;
     if (l.rpe > high) { highStreak++; lowStreak = 0; }
@@ -177,28 +198,13 @@ function consecutiveOutOfRangeLifts(logs: LiftLog[], ex: string, low: number, hi
   }
   return { highStreak, lowStreak };
 }
-
-/**
- * Compute today's recommended weight/assist for an exercise.
- * Rules:
- * - Start from most recent logged weight, else from settings "start_*".
- * - If RPE high streak: decrease by 1 increment per step (cap 3).
- * - If RPE low streak >= 2: increase by 1 increment.
- * - Aggressive = +1 more increment (harder), Conservative = -1 increment (easier).
- * - For "assist" exercises, "increasing difficulty" means LOWER assist number.
- */
-function liftRecommendation(
-  ex: string,
-  logs: LiftLog[],
-  settings: Settings
-) {
+function liftRecommendation(ex: string, logs: LiftLog[], settings: Settings) {
   const cat = exerciseCategory(ex);
   const incUpper = Number(settings.inc_upper ?? '5');
   const incLower = Number(settings.inc_lower ?? '10');
   const incAssist = Number(settings.inc_assist ?? '5');
   const inc = cat === 'assist' ? incAssist : (cat === 'lower' ? incLower : incUpper);
 
-  // Map exercise -> starting weight key in settings
   const startMap: Record<string, string | undefined> = {
     'Incline Chest Press (lb)': settings.start_incline,
     'Shoulder Press (lb)': settings.start_shoulder,
@@ -210,7 +216,6 @@ function liftRecommendation(
     'Hamstring Curl (lb)': settings.start_ham,
     'Calf Raises (lb)': settings.start_calf,
   };
-
   let startValStr = startMap[ex];
   if (!startValStr) {
     const lowerKey = Object.keys(startMap).find(k => ex.toLowerCase().includes(k.toLowerCase().split(' (')[0]));
@@ -223,43 +228,30 @@ function liftRecommendation(
 
   const { highStreak, lowStreak } = consecutiveOutOfRangeLifts(logs, ex, LIFT_RPE_TARGET[0], LIFT_RPE_TARGET[1]);
 
-  // delta in lbs (positive means "harder": more weight, or less assist)
   let delta = 0;
   if (highStreak >= 1) delta -= inc;
   if (highStreak >= 2) delta -= inc;
   if (highStreak >= 3) delta -= inc;
   if (lowStreak >= 2) delta += inc;
 
-  // For assist machines: "harder" = lower assist number
   const apply = (w: number, deltaLbs: number) => {
-    if (cat === 'assist') return Math.max(0, w - deltaLbs); // lower assist when delta positive
+    if (cat === 'assist') return Math.max(0, w - deltaLbs); // lower assist when harder
     return Math.max(0, w + deltaLbs);
   };
 
-  const today = apply(base, Math.max(-3 * inc, Math.min(3 * inc, delta))); // clamp
+  const today = apply(base, Math.max(-3 * inc, Math.min(3 * inc, delta)));
   const aggressive = apply(today, inc);
   const conservative = apply(today, -inc);
-
-  // RPE delta display (signed lbs; + means harder)
   const rpeDeltaLbs = (cat === 'assist') ? -delta : delta;
 
-  return {
-    exercise: ex,
-    last: base,
-    today,
-    aggressive,
-    conservative,
-    rpeDeltaLbs,
-    inc,
-    cat,
-  };
+  return { exercise: ex, last: base, today, aggressive, conservative, rpeDeltaLbs, inc, cat };
 }
 
 /* =========================
    Component
 ========================= */
 export default function TodayPage() {
-  // ---- recent logs
+  // recent logs
   const [recentRuns, setRecentRuns] = useState<RunLog[]>([]);
   const [recentLifts, setRecentLifts] = useState<LiftLog[]>([]);
   async function loadRecent() {
@@ -269,7 +261,7 @@ export default function TodayPage() {
   }
   useEffect(() => { loadRecent(); }, []);
 
-  // ---- settings
+  // settings
   const [settings, setSettings] = useState<Settings>({
     goal_mp:'9:40', tempo_base:'9:00', easy_base:'10:30', speed_base:'7:55', recovery_base:'10:35',
     temp:'80', humidity:'60',
@@ -278,18 +270,19 @@ export default function TodayPage() {
     inc_upper:'5', inc_lower:'10', inc_assist:'5'
   });
   useEffect(() => {
-    fetch('/api/settings')
-      .then(r => r.ok ? r.json() : {})
-      .then((s) => s && setSettings((prev) => ({ ...prev, ...s })))
-      .catch(() => {/* ignore */});
+    fetch('/api/settings').then(r=>r.ok?r.json():{}).then(s => s && setSettings(prev=>({...prev, ...s}))).catch(()=>{});
   }, []);
 
   /* ---------- RUN bands ---------- */
   const tempF = num(settings.temp, 80);
   const humidityPct = num(settings.humidity, 60);
 
+  // Derived bases
+  const mediumBase = deriveMediumFromMP(settings.goal_mp); // MP + ~50s
+  const easyBase   = deriveEasyFromMP(settings.goal_mp);   // MP + ~75s
+
   const rpeSec = useMemo(() => ({
-    Marathon: rpeAdjSeconds(recentRuns, 'Marathon'),
+    Medium:   rpeAdjSeconds(recentRuns, 'Medium'),
     Tempo:    rpeAdjSeconds(recentRuns, 'Tempo'),
     Easy:     rpeAdjSeconds(recentRuns, 'Easy'),
     Speed:    rpeAdjSeconds(recentRuns, 'Speed'),
@@ -297,12 +290,13 @@ export default function TodayPage() {
   }), [recentRuns]);
 
   const paceRows = useMemo(() => ([
-    bandRow('Marathon', settings.goal_mp,      tempF, humidityPct, -10, +15, rpeSec.Marathon),
-    bandRow('Tempo',    settings.tempo_base,   tempF, humidityPct, -10, +15, rpeSec.Tempo),
-    bandRow('Easy',     settings.easy_base,    tempF, humidityPct, -10, +15, rpeSec.Easy),
-    bandRow('Speed',    settings.speed_base,   tempF, humidityPct, -10, +15, rpeSec.Speed),
-    bandRow('Recovery', settings.recovery_base,tempF, humidityPct, -10, +15, rpeSec.Recovery),
-  ]), [settings, tempF, humidityPct, rpeSec]);
+    // Replaces old "Marathon" row with "Medium" derived from MP
+    bandRowFromStr('Medium',   mediumBase,           tempF, humidityPct, -10, +15, rpeSec.Medium),
+    bandRowFromStr('Tempo',    settings.tempo_base,  tempF, humidityPct, -10, +15, rpeSec.Tempo),
+    bandRowFromStr('Easy',     easyBase,             tempF, humidityPct, -10, +15, rpeSec.Easy),
+    bandRowFromStr('Speed',    settings.speed_base,  tempF, humidityPct, -10, +15, rpeSec.Speed),
+    bandRowFromStr('Recovery', settings.recovery_base,tempF, humidityPct, -10, +15, rpeSec.Recovery),
+  ]), [settings, tempF, humidityPct, rpeSec, mediumBase, easyBase]);
 
   /* ---------- LIFT recommendations ---------- */
   const liftRecs = useMemo(() => {
@@ -320,9 +314,7 @@ export default function TodayPage() {
     rpe: 7,
     notes: '',
   });
-  function setRunField<K extends keyof RunLog>(k: K, v: any) {
-    setRun((f) => ({ ...f, [k]: v }));
-  }
+  function setRunField<K extends keyof RunLog>(k: K, v: any) { setRun(f => ({ ...f, [k]: v })); }
   function resetRunForm() {
     setEditingRunId(null);
     setRun({ logDate: isoToday(), runType: 'Easy', actualDistance: 0, actualPace: '', rpe: 7, notes: '' });
@@ -349,22 +341,15 @@ export default function TodayPage() {
   async function saveRun() {
     const method = editingRunId ? 'PUT' : 'POST';
     const url = editingRunId ? `/api/logs/run/${editingRunId}` : '/api/logs/run';
-    const ok = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(run),
-    }).then((r) => r.ok).catch(() => false);
-    if (ok) {
-      toast({ title: editingRunId ? 'Run updated' : 'Run saved', description: 'Entry stored successfully.' });
-      setRunOpen(false); resetRunForm(); loadRecent();
-    } else {
-      toast({ title: 'Error', description: 'Could not save run.' });
-    }
+    const ok = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(run) })
+      .then(r=>r.ok).catch(()=>false);
+    if (ok) { toast({ title: editingRunId?'Run updated':'Run saved', description: 'Entry stored successfully.' }); setRunOpen(false); resetRunForm(); loadRecent(); }
+    else { toast({ title:'Error', description:'Could not save run.' }); }
   }
   async function deleteRun(id: number) {
-    const ok = await fetch(`/api/logs/run/${id}`, { method: 'DELETE' }).then((r) => r.ok).catch(() => false);
-    if (ok) { toast({ title: 'Run deleted', description: 'Entry removed.' }); loadRecent(); }
-    else { toast({ title: 'Error', description: 'Could not delete run.' }); }
+    const ok = await fetch(`/api/logs/run/${id}`, { method:'DELETE' }).then(r=>r.ok).catch(()=>false);
+    if (ok) { toast({ title:'Run deleted', description:'Entry removed.' }); loadRecent(); }
+    else { toast({ title:'Error', description:'Could not delete run.' }); }
   }
 
   // ---------- LIFT modal ----------
@@ -380,12 +365,10 @@ export default function TodayPage() {
     rpe: 7,
     notes: '',
   });
-  function setLiftField<K extends keyof LiftLog>(k: K, v: any) {
-    setLift((f) => ({ ...f, [k]: v }));
-  }
+  function setLiftField<K extends keyof LiftLog>(k: K, v: any) { setLift(f => ({ ...f, [k]: v })); }
   function resetLiftForm() {
     setEditingLiftId(null);
-    setLift({ logDate: isoToday(), dayType: 'Push', exercise: LIFT_EXERCISES[0], weight: 0, sets: 3, reps: 8, rpe: 7, notes: '' });
+    setLift({ logDate: isoToday(), dayType:'Push', exercise:LIFT_EXERCISES[0], weight:0, sets:3, reps:8, rpe:7, notes:'' });
   }
   function openLiftEditor(entry?: LiftLog) {
     if (entry) {
@@ -408,22 +391,15 @@ export default function TodayPage() {
   async function saveLift() {
     const method = editingLiftId ? 'PUT' : 'POST';
     const url = editingLiftId ? `/api/logs/lift/${editingLiftId}` : '/api/logs/lift';
-    const ok = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(lift),
-    }).then((r) => r.ok).catch(() => false);
-    if (ok) {
-      toast({ title: editingLiftId ? 'Lift updated' : 'Lift saved', description: 'Entry stored successfully.' });
-      setLiftOpen(false); resetLiftForm(); loadRecent();
-    } else {
-      toast({ title: 'Error', description: 'Could not save lift.' });
-    }
+    const ok = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(lift) })
+      .then(r=>r.ok).catch(()=>false);
+    if (ok) { toast({ title: editingLiftId?'Lift updated':'Lift saved', description: 'Entry stored successfully.' }); setLiftOpen(false); resetLiftForm(); loadRecent(); }
+    else { toast({ title:'Error', description:'Could not save lift.' }); }
   }
   async function deleteLift(id: number) {
-    const ok = await fetch(`/api/logs/lift/${id}`, { method: 'DELETE' }).then((r) => r.ok).catch(() => false);
-    if (ok) { toast({ title: 'Lift deleted', description: 'Entry removed.' }); loadRecent(); }
-    else { toast({ title: 'Error', description: 'Could not delete lift.' }); }
+    const ok = await fetch(`/api/logs/lift/${id}`, { method:'DELETE' }).then(r=>r.ok).catch(()=>false);
+    if (ok) { toast({ title:'Lift deleted', description:'Entry removed.' }); loadRecent(); }
+    else { toast({ title:'Error', description:'Could not delete lift.' }); }
   }
 
   // Deep-link edit (?editRunId / ?editLiftId)
@@ -445,11 +421,7 @@ export default function TodayPage() {
   }, [recentRuns, recentLifts]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
-    >
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease: 'easeOut' }}>
       <div className="grid gap-4">
         <Tabs defaultValue="run">
           <TabsList>
@@ -485,13 +457,9 @@ export default function TodayPage() {
                         <td className="p-2">{r.aggressive}</td>
                         <td className="p-2">{r.conservative}</td>
                         <td className="p-2">
-                          {r.rpeDeltaSec === 0 ? (
-                            <span className="pill">0s</span>
-                          ) : r.rpeDeltaSec > 0 ? (
-                            <span className="pill">+{r.rpeDeltaSec}s</span>
-                          ) : (
-                            <span className="pill">{r.rpeDeltaSec}s</span>
-                          )}
+                          {r.rpeDeltaSec === 0 ? <span className="pill">0s</span>
+                            : r.rpeDeltaSec > 0 ? <span className="pill">+{r.rpeDeltaSec}s</span>
+                            : <span className="pill">{r.rpeDeltaSec}s</span>}
                         </td>
                       </tr>
                     ))}
@@ -500,7 +468,6 @@ export default function TodayPage() {
               </div>
             </Card>
 
-            {/* Log/Edit card */}
             <div className="mb-8">
               <Card title="Log or Edit a Run">
                 <div className="flex flex-wrap gap-2">
@@ -509,7 +476,6 @@ export default function TodayPage() {
               </Card>
             </div>
 
-            {/* Recent runs */}
             <div className="mt-8">
               <Card title="Recent Runs">
                 <div className="overflow-x-auto">
@@ -546,7 +512,6 @@ export default function TodayPage() {
 
           {/* ---------- LIFT TAB ---------- */}
           <TabsContent value="lift">
-            {/* Lift auto-adjust recommendations (per exercise) */}
             <Card
               title="Today’s Lift Recommendations"
               subtitle="Based on your recent RPE trends and starting weights"
@@ -573,13 +538,9 @@ export default function TodayPage() {
                         <td className="p-2">{rec.aggressive}</td>
                         <td className="p-2">{rec.conservative}</td>
                         <td className="p-2">
-                          {rec.rpeDeltaLbs === 0 ? (
-                            <span className="pill">0 lb</span>
-                          ) : rec.rpeDeltaLbs > 0 ? (
-                            <span className="pill">+{rec.rpeDeltaLbs} lb</span>
-                          ) : (
-                            <span className="pill">{rec.rpeDeltaLbs} lb</span>
-                          )}
+                          {rec.rpeDeltaLbs === 0 ? <span className="pill">0 lb</span>
+                            : rec.rpeDeltaLbs > 0 ? <span className="pill">+{rec.rpeDeltaLbs} lb</span>
+                            : <span className="pill">{rec.rpeDeltaLbs} lb</span>}
                         </td>
                       </tr>
                     ))}
@@ -588,7 +549,6 @@ export default function TodayPage() {
               </div>
             </Card>
 
-            {/* Log/Edit LIFT */}
             <div className="mb-8">
               <Card title="Log or Edit a Lift">
                 <div className="flex flex-wrap gap-2">
@@ -597,7 +557,6 @@ export default function TodayPage() {
               </Card>
             </div>
 
-            {/* Recent Lifts */}
             <div className="mt-8">
               <Card title="Recent Lifts">
                 <div className="overflow-x-auto">
@@ -643,30 +602,25 @@ export default function TodayPage() {
         maxWidthClass="max-w-2xl"
       >
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-          <label className="text-sm">
-            Date
+          <label className="text-sm">Date
             <input type="date" className="input" value={run.logDate} onChange={(e) => setRunField('logDate', e.target.value)} />
           </label>
-          <label className="text-sm">
-            Type
+          <label className="text-sm">Type
             <select className="input" value={run.runType || 'Easy'} onChange={(e) => setRunField('runType', e.target.value)}>
               {RUN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {/* Consider ensuring RUN_TYPES includes "Medium" for logging consistency */}
             </select>
           </label>
-          <label className="text-sm">
-            Distance (mi)
+          <label className="text-sm">Distance (mi)
             <input className="input" type="number" step="0.01" value={run.actualDistance ?? 0} onChange={(e) => setRunField('actualDistance', parseFloat(e.target.value || '0'))} />
           </label>
-          <label className="text-sm">
-            Pace (mm:ss)
+          <label className="text-sm">Pace (mm:ss)
             <input className="input" value={run.actualPace || ''} onChange={(e) => setRunField('actualPace', e.target.value)} />
           </label>
-          <label className="text-sm">
-            RPE (1–10)
+          <label className="text-sm">RPE (1–10)
             <input className="input" type="number" min={1} max={10} value={run.rpe ?? 7} onChange={(e) => setRunField('rpe', parseInt(e.target.value || '7', 10))} />
           </label>
-          <label className="text-sm sm:col-span-2">
-            Notes
+          <label className="text-sm sm:col-span-2">Notes
             <textarea className="input" rows={3} value={run.notes || ''} onChange={(e) => setRunField('notes', e.target.value)} />
           </label>
         </div>
@@ -684,40 +638,32 @@ export default function TodayPage() {
         maxWidthClass="max-w-xl"
       >
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-          <label className="text-sm">
-            Date
+          <label className="text-sm">Date
             <input type="date" className="input" value={lift.logDate} onChange={(e) => setLiftField('logDate', e.target.value)} />
           </label>
-          <label className="text-sm">
-            Day
+          <label className="text-sm">Day
             <select className="input" value={lift.dayType || 'Push'} onChange={(e) => setLiftField('dayType', e.target.value)}>
               <option>Push</option><option>Pull</option><option>Legs</option>
             </select>
           </label>
-          <label className="text-sm">
-            Exercise
+          <label className="text-sm">Exercise
             <select className="input" value={lift.exercise || LIFT_EXERCISES[0]} onChange={(e) => setLiftField('exercise', e.target.value)}>
               {LIFT_EXERCISES.map((ex) => <option key={ex} value={ex}>{ex}</option>)}
             </select>
           </label>
-          <label className="text-sm">
-            Weight (lb) / Assist
+          <label className="text-sm">Weight (lb) / Assist
             <input type="number" className="input" value={lift.weight ?? 0} onChange={(e) => setLiftField('weight', parseFloat(e.target.value || '0'))} />
           </label>
-          <label className="text-sm">
-            Sets
+          <label className="text-sm">Sets
             <input type="number" className="input" value={lift.sets ?? 3} onChange={(e) => setLiftField('sets', parseInt(e.target.value || '3', 10))} />
           </label>
-          <label className="text-sm">
-            Reps
+          <label className="text-sm">Reps
             <input type="number" className="input" value={lift.reps ?? 8} onChange={(e) => setLiftField('reps', parseInt(e.target.value || '8', 10))} />
           </label>
-          <label className="text-sm sm:col-span-2">
-            RPE (1–10)
+          <label className="text-sm sm:col-span-2">RPE (1–10)
             <input type="number" className="input" min={1} max={10} value={lift.rpe ?? 7} onChange={(e) => setLiftField('rpe', parseInt(e.target.value || '7', 10))} />
           </label>
-          <label className="text-sm sm:col-span-2">
-            Notes
+          <label className="text-sm sm:col-span-2">Notes
             <textarea className="input" rows={3} value={lift.notes || ''} onChange={(e) => setLiftField('notes', e.target.value)} />
           </label>
         </div>
