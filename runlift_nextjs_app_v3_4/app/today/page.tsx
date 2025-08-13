@@ -1,6 +1,6 @@
 'use client';
 
-import Fade from '@/components/Fade';
+import { motion } from 'framer-motion';
 import Card from '@/components/Card';
 import Modal from '@/components/Modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs';
@@ -67,9 +67,9 @@ function fmtPace(sec: number | null): string {
    (baseline 60°F/50% humidity)
 ========================= */
 function heatAdjMultiplier(tempF: number, humidityPct: number): number {
-  const tAdj = Math.max(0, (tempF - 60) / 5) * 0.01;     // +1% per +5°F
+  const tAdj = Math.max(0, (tempF - 60) / 5) * 0.01;        // +1% per +5°F
   const hAdj = Math.max(0, (humidityPct - 50) / 10) * 0.005; // +0.5% per +10%
-  const total = Math.min(0.12, tAdj + hAdj); // clamp 12%
+  const total = Math.min(0.12, tAdj + hAdj);                 // clamp 12%
   return 1 + total;
 }
 
@@ -321,7 +321,11 @@ export default function TodayPage() {
   }, [recentRuns, recentLifts]);
 
   return (
-    <Fade>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+    >
       <div className="grid gap-4">
         <Tabs defaultValue="run">
           <TabsList>
@@ -354,9 +358,7 @@ export default function TodayPage() {
                       <tr key={r.name}>
                         <td className="p-2">{r.name}</td>
                         <td className="p-2">{r.base}</td>
-                        <td className="p-2">
-                          <span className="pill">{r.today || '-'}</span>
-                        </td>
+                        <td className="p-2"><span className="pill">{r.today || '-'}</span></td>
                         <td className="p-2">{r.aggressive}</td>
                         <td className="p-2">{r.conservative}</td>
                         <td className="p-2">
@@ -519,4 +521,44 @@ export default function TodayPage() {
             Date
             <input type="date" className="input" value={lift.logDate} onChange={(e) => setLiftField('logDate', e.target.value)} />
           </label>
-          <lab
+          <label className="text-sm">
+            Day
+            <select className="input" value={lift.dayType || 'Push'} onChange={(e) => setLiftField('dayType', e.target.value)}>
+              <option>Push</option><option>Pull</option><option>Legs</option>
+            </select>
+          </label>
+          <label className="text-sm">
+            Exercise
+            <select className="input" value={lift.exercise || LIFT_EXERCISES[0]} onChange={(e) => setLiftField('exercise', e.target.value)}>
+              {LIFT_EXERCISES.map((ex) => <option key={ex} value={ex}>{ex}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">
+            Weight (lb) / Assist
+            <input type="number" className="input" value={lift.weight ?? 0} onChange={(e) => setLiftField('weight', parseFloat(e.target.value || '0'))} />
+          </label>
+          <label className="text-sm">
+            Sets
+            <input type="number" className="input" value={lift.sets ?? 3} onChange={(e) => setLiftField('sets', parseInt(e.target.value || '3', 10))} />
+          </label>
+          <label className="text-sm">
+            Reps
+            <input type="number" className="input" value={lift.reps ?? 8} onChange={(e) => setLiftField('reps', parseInt(e.target.value || '8', 10))} />
+          </label>
+          <label className="text-sm sm:col-span-2">
+            RPE (1–10)
+            <input type="number" className="input" min={1} max={10} value={lift.rpe ?? 7} onChange={(e) => setLiftField('rpe', parseInt(e.target.value || '7', 10))} />
+          </label>
+          <label className="text-sm sm:col-span-2">
+            Notes
+            <textarea className="input" rows={3} value={lift.notes || ''} onChange={(e) => setLiftField('notes', e.target.value)} />
+          </label>
+        </div>
+        <div className="mt-2 sm:mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3 justify-end">
+          <button className="btn" onClick={() => { setLiftOpen(false); resetLiftForm(); }}>Cancel</button>
+          <button className="btn" onClick={saveLift}>{editingLiftId ? 'Update' : 'Save'}</button>
+        </div>
+      </Modal>
+    </motion.div>
+  );
+}
