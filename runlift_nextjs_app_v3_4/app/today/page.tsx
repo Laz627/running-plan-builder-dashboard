@@ -278,8 +278,8 @@ export default function TodayPage() {
   const humidityPct = num(settings.humidity, 60);
 
   // Derived bases
-  const mediumBase = deriveMediumFromMP(settings.goal_mp); // MP + ~50s
-  const easyBase   = deriveEasyFromMP(settings.goal_mp);   // MP + ~75s
+   const mediumBase = deriveMediumFromMP(settings.goal_mp); // keep Medium derived from MP
+   // const easyBase = deriveEasyFromMP(settings.goal_mp);  // no longer used
 
   const rpeSec = useMemo(() => ({
     Medium:   rpeAdjSeconds(recentRuns, 'Medium'),
@@ -289,14 +289,13 @@ export default function TodayPage() {
     Recovery: rpeAdjSeconds(recentRuns, 'Recovery'),
   }), [recentRuns]);
 
-  const paceRows = useMemo(() => ([
-    // Replaces old "Marathon" row with "Medium" derived from MP
-    bandRowFromStr('Medium',   mediumBase,           tempF, humidityPct, -10, +15, rpeSec.Medium),
-    bandRowFromStr('Tempo',    settings.tempo_base,  tempF, humidityPct, -10, +15, rpeSec.Tempo),
-    bandRowFromStr('Easy',     easyBase,             tempF, humidityPct, -10, +15, rpeSec.Easy),
-    bandRowFromStr('Speed',    settings.speed_base,  tempF, humidityPct, -10, +15, rpeSec.Speed),
-    bandRowFromStr('Recovery', settings.recovery_base,tempF, humidityPct, -10, +15, rpeSec.Recovery),
-  ]), [settings, tempF, humidityPct, rpeSec, mediumBase, easyBase]);
+const paceRows = useMemo(() => ([
+  bandRowFromStr('Medium',   mediumBase,            tempF, humidityPct, -10, +15, rpeSec.Medium),
+  bandRowFromStr('Tempo',    settings.tempo_base,   tempF, humidityPct, -10, +15, rpeSec.Tempo),
+  bandRowFromStr('Easy',     settings.easy_base,    tempF, humidityPct, -10, +15, rpeSec.Easy),  // ← use manual base
+  bandRowFromStr('Speed',    settings.speed_base,   tempF, humidityPct, -10, +15, rpeSec.Speed),
+  bandRowFromStr('Recovery', settings.recovery_base,tempF, humidityPct, -10, +15, rpeSec.Recovery),
+]), [settings, tempF, humidityPct, rpeSec, mediumBase]);
 
   /* ---------- LIFT recommendations ---------- */
   const liftRecs = useMemo(() => {
