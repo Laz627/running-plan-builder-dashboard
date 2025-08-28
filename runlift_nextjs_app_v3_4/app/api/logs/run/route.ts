@@ -15,8 +15,8 @@ type RunPayload = {
   logDate: string;
   runType?: string | null;        // 'Tempo' | 'MP' | 'Easy' | 'Recovery' | 'Speed'
   plannedDesc?: string | null;
-  targetPaceCool?: string | null; // e.g. "9:00"
-  targetPaceHeat?: string | null;
+  targetPaceCool?: string | null; // "mm:ss"
+  targetPaceHeat?: string | null; // "mm:ss"
   actualDistance?: number | null; // miles
   actualPace?: string | null;     // "mm:ss"
   rpe?: number | null;            // 1–10
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as RunPayload;
 
-    // 1) Save the log (server time fallback if logDate missing)
+    // 1) Save the log
     const saved = await prisma.runLog.create({
       data: {
         logDate: new Date(body.logDate ?? new Date().toISOString()),
@@ -54,13 +54,13 @@ export async function POST(req: Request) {
       },
     });
 
-    // 2) Optional per-type *adjustment* logic, without mutating baselines
+    // 2) Per-type pace *adjustment* (do NOT mutate the baseline)
     const rpe = body.rpe ?? 7;
     const typeKey = keyForType(body.runType);
 
     if (typeKey) {
-      const baselineKey = `${typeKey}`;           // e.g. 'easy_base'
-      const adjKey = `${typeKey}_adj`;            // e.g. 'easy_base_adj' (seconds)
+      const baselineKey = `${typeKey}`;      // e.g., 'easy_base'
+      const adjKey = `${typeKey}_adj`;       // e.g., 'easy_base_adj' (seconds)
 
       const baseline = await getSetting(baselineKey, '0:00');
       const currentAdj = num(await getSetting(adjKey, '0'), 0);
@@ -68,17 +68,13 @@ export async function POST(req: Request) {
       // Compute next cumulative adjustment (capped/controlled)
       const nextAdj = nextAdjustmentSeconds(currentAdj, rpe);
 
-      // Derive today's display pace from baseline + adjustment (not persisted as baseline)
-      const nextPace = adjustedPaceFromBaseline(baseline, nextAdj);
+      // Derive today's pace from baseline + adjustment (not persisted as baseline)
+      const _todayPace = adjustedPaceFromBaseline(baseline, nextAdj);
 
       // Persist ONLY the adjustment; keep baseline user-controlled in Settings.
       await setSettings({
         [adjKey]: String(nextAdj),
-        // [baselineKey]: nextPace,   // ❌ DO NOT mutate baselines here
       });
-
-      // If you want to show the derived "today" pace back to the client, you could include it:
-      // return NextResponse.json({ ok: true, saved, todayTarget: { typeKey, baseline, nextAdj, nextPace } }, { status: 200 });
     }
 
     return NextResponse.json({ ok: true, saved }, { status: 200 });
