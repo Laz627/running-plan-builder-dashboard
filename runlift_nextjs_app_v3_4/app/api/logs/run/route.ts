@@ -10,24 +10,28 @@ import {
 
 const prisma = new PrismaClient();
 
+/** Body shape from EditRunModal */
 type RunPayload = {
   logDate: string;
-  runType?: string | null;   // 'Tempo' | 'MP' | 'Easy' | 'Recovery' | 'Speed'
+  runType?: string | null;        // 'Tempo' | 'MP' | 'Easy' | 'Recovery' | 'Speed'
   plannedDesc?: string | null;
-  targetPaceCool?: string | null;
+  targetPaceCool?: string | null; // e.g. "9:00"
   targetPaceHeat?: string | null;
-  actualDistance?: number | null;
-  actualPace?: string | null;  // "mm:ss"
-  rpe?: number | null;
+  actualDistance?: number | null; // miles
+  actualPace?: string | null;     // "mm:ss"
+  rpe?: number | null;            // 1–10
   notes?: string | null;
 };
 
-function keyForType(type: string): string | null {
-  const t = type.toLowerCase();
+/** Map UI run type to the baseline settings key */
+function keyForType(runType: string | null | undefined): string | null {
+  if (!runType) return null;
+  const t = runType.toLowerCase();
   if (t.includes('tempo')) return 'tempo_base';
   if (t.includes('recovery')) return 'recovery_base';
+  if (t.includes('speed') || t.includes('interval')) return 'speed_base';
   if (t === 'easy' || t.includes('easy')) return 'easy_base';
-  if (t.includes('mp')) return 'goal_mp';
+  if (t.includes('mp') || t.includes('marathon')) return 'goal_mp';
   return null;
 }
 
@@ -35,7 +39,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as RunPayload;
 
-    // 1) Save the log
+    // 1) Save the log (server time fallback if logDate missing)
     const saved = await prisma.runLog.create({
       data: {
         logDate: new Date(body.logDate ?? new Date().toISOString()),
@@ -50,33 +54,31 @@ export async function POST(req: Request) {
       },
     });
 
-    // 2) Per-type pace auto-adjust
+    // 2) Optional per-type *adjustment* logic, without mutating baselines
     const rpe = body.rpe ?? 7;
-    const typeKey = body.runType ? keyForType(body.runType) : null;
+    const typeKey = keyForType(body.runType);
 
     if (typeKey) {
-      const baseKey = typeKey;                        // e.g., 'tempo_base'
-      const baselineKey = `${typeKey}_baseline`;      // e.g., 'tempo_base_baseline'
-      const adjKey = `${typeKey}_adj`;                // e.g., 'tempo_base_adj' (seconds)
+      const baselineKey = `${typeKey}`;           // e.g. 'easy_base'
+      const adjKey = `${typeKey}_adj`;            // e.g. 'easy_base_adj' (seconds)
 
-      // Seed baseline on first use
-      const currentStored = await getSetting(baseKey, '');
-      let baseline = await getSetting(baselineKey, '');
-      if (!baseline && currentStored) {
-        baseline = currentStored;
-        await setSettings({ [baselineKey]: baseline });
-      }
+      const baseline = await getSetting(baselineKey, '0:00');
+      const currentAdj = num(await getSetting(adjKey, '0'), 0);
 
-      if (baseline) {
-        const currAdj = num(await getSetting(adjKey, '0'), 0);
-        const nextAdj = nextAdjustmentSeconds(currAdj, rpe);
-        const nextPace = adjustedPaceFromBaseline(baseline, nextAdj);
+      // Compute next cumulative adjustment (capped/controlled)
+      const nextAdj = nextAdjustmentSeconds(currentAdj, rpe);
 
-        await setSettings({
-          [adjKey]: String(nextAdj),
-          [baseKey]: nextPace,
-        });
-      }
+      // Derive today's display pace from baseline + adjustment (not persisted as baseline)
+      const nextPace = adjustedPaceFromBaseline(baseline, nextAdj);
+
+      // Persist ONLY the adjustment; keep baseline user-controlled in Settings.
+      await setSettings({
+        [adjKey]: String(nextAdj),
+        // [baselineKey]: nextPace,   // ❌ DO NOT mutate baselines here
+      });
+
+      // If you want to show the derived "today" pace back to the client, you could include it:
+      // return NextResponse.json({ ok: true, saved, todayTarget: { typeKey, baseline, nextAdj, nextPace } }, { status: 200 });
     }
 
     return NextResponse.json({ ok: true, saved }, { status: 200 });
