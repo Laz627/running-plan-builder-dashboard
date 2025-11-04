@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from '@/components/Toaster';
 import { LIFT_EXERCISES, RUN_TYPES } from '@/lib/exercises';
+import RouteManager, { SavedRoute } from '@/components/RouteManager';
 
 /* =========================
    Types
@@ -313,6 +314,7 @@ const paceRows = useMemo(() => ([
     rpe: 7,
     notes: '',
   });
+  const [activeRoute, setActiveRoute] = useState<SavedRoute | null>(null);
   function setRunField<K extends keyof RunLog>(k: K, v: any) { setRun(f => ({ ...f, [k]: v })); }
   function resetRunForm() {
     setEditingRunId(null);
@@ -401,6 +403,32 @@ const paceRows = useMemo(() => ([
     else { toast({ title:'Error', description:'Could not delete lift.' }); }
   }
 
+  useEffect(() => {
+    if (!activeRoute || editingRunId) return;
+    const dist = Math.round(activeRoute.distanceMiles * 100) / 100;
+    setRun(prev => {
+      const existing = prev.notes ?? '';
+      const isRouteNote = existing.startsWith('Route: ');
+      const nextNotes = isRouteNote || existing.trim().length === 0
+        ? `Route: ${activeRoute.name}`
+        : existing;
+      return {
+        ...prev,
+        actualDistance: dist,
+        notes: nextNotes,
+      };
+    });
+  }, [activeRoute, editingRunId]);
+
+  function clearActiveRoute() {
+    setActiveRoute(null);
+  }
+
+  function handleRouteLoad(route: SavedRoute) {
+    setActiveRoute(route);
+    toast({ title: 'Route loaded', description: `${route.name} ready for today.` });
+  }
+
   // Deep-link edit (?editRunId / ?editLiftId)
   useEffect(() => {
     const u = new URL(window.location.href);
@@ -472,7 +500,22 @@ const paceRows = useMemo(() => ([
                 <div className="flex flex-wrap gap-2">
                   <button className="btn" onClick={() => openRunEditor()}>New Run</button>
                 </div>
+                {activeRoute && (
+                  <div className="mt-3 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 px-3 py-2 text-sm text-gray-600 dark:text-gray-300">
+                    Loaded route: <strong>{activeRoute.name}</strong> ({activeRoute.distanceMiles.toFixed(2)} mi)
+                    <button className="btn ml-3" onClick={clearActiveRoute}>Clear route</button>
+                  </div>
+                )}
               </Card>
+            </div>
+
+            <div className="mt-8">
+              <RouteManager
+                token={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
+                onRouteLoad={handleRouteLoad}
+                onRouteClear={clearActiveRoute}
+                activeRouteId={activeRoute?.id ?? null}
+              />
             </div>
 
             <div className="mt-8">
